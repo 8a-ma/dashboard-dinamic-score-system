@@ -75,7 +75,7 @@ DISEÑAR CADA SPEC
 
 ## Stack de tecnología:
 
-- Python
+- Python (3.12)
 - Scikit-learn (para el modelo logístico clásico)
 - Python-control (para LQR y el observador)
 - NumPy
@@ -138,6 +138,7 @@ DISEÑAR CADA SPEC
 - carpeta "gui" (donde se guardara el código para la interfaz gráfica para la visualización de la parte del cliente y el banco, aquí se utiliza la estructura de archivos en DDD)
 - carpeta "tests" (donde se guardaran los test de código[pytest], aserciones y comparaciones entre modelos)
 - carpeta "docs" (donde se guardan documentación relevante del proyecto)
+- carpeta "scripts" (código generico, no importante para el proyecto)
 
 ---
 
