@@ -3,6 +3,9 @@
 !.github/
 !.github/**
 
+!scripts/
+!scripts/**
+
 !*.gitignore
 !LICENSE
 !README.md
