@@ -1,0 +1,9 @@
+/*
+
+!.github/
+!.github/**
+
+!*.gitignore
+!LICENSE
+!README.md
+!AGENTS.md
