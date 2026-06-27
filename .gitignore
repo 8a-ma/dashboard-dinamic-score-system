@@ -9,7 +9,14 @@
 !docs/
 !docs/**
 
+!modelos/
+!modelos/**
+
+!gui/
+!gui/**
+
 !*.gitignore
 !LICENSE
 !README.md
 !AGENTS.md
+!requirements.txt

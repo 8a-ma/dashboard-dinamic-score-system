@@ -14,10 +14,10 @@
 
 | ID | Tarea | Estado | Dependencias | Archivo(s) |
 |---|---|---|---|---|
-| T0.1 | Crear estructura de directorios y `__init__.py` vacíos | ⬜ pendiente | — | Todos los directorios |
-| T0.2 | Crear `requirements.txt` con dependencias fijadas | ⬜ pendiente | — | `requirements.txt` |
+| T0.1 | Crear estructura de directorios y `__init__.py` vacíos | ✅ completado | — | Todos los directorios |
+| T0.2 | Crear `requirements.txt` con dependencias fijadas | ✅ completado | — | `requirements.txt` |
 | T0.3 | Crear `docs/tareas.md` y `docs/plan-implementacion.md` | ✅ completado | — | `docs/` |
-| T0.4 | Validar Python 3.12, instalar dependencias, verificar imports | ⬜ pendiente | T0.2 | — |
+| T0.4 | Validar Python 3.12, instalar dependencias, verificar imports | ✅ completado | T0.2 | — |
 
 ---
 
