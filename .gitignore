@@ -6,6 +6,9 @@
 !scripts/
 !scripts/**
 
+!docs/
+!docs/**
+
 !*.gitignore
 !LICENSE
 !README.md
