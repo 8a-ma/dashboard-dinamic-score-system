@@ -247,7 +247,6 @@ dashboard-dinamic-score-system/
 │   ├── test_logistico.py
 │   └── test_integracion.py
 └── docs/
-    ├── sdd-especificaciones-tecnicas.md   ← este documento
     ├── plan-implementacion.md
     └── tareas.md
 ```
