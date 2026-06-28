@@ -25,9 +25,9 @@
 
 | ID | Tarea | Estado | Dependencias | Archivo(s) |
 |---|---|---|---|---|
-| T1.1.1 | Añadir flag `--force` y validaciones al script existente | 🔄 en curso | T0.4 | `scripts/transacciones.py` |
-| T1.1.2 | Añadir aserciones (N_CUSTOMERS, shape del CSV) | ⬜ pendiente | T1.1.1 | `scripts/transacciones.py` |
-| T1.1.3 | Ejecutar y verificar CSV (12 000 filas, distribución arquetipos) | ⬜ pendiente | T1.1.2 | `db/raw_transactions.csv` |
+| T1.1.1 | Añadir flag `--force` y validaciones al script existente | ✅ completado | T0.4 | `scripts/transacciones.py` |
+| T1.1.2 | Añadir aserciones (N_CUSTOMERS, shape del CSV) | ✅ completado | T1.1.1 | `scripts/transacciones.py` |
+| T1.1.3 | Ejecutar y verificar CSV (12 000 filas, distribución arquetipos) | ✅ completado | T1.1.2 | `db/raw_transactions.csv` |
 
 ---
 
