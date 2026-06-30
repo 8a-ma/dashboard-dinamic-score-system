@@ -1,137 +1,132 @@
-"""
-| `modelos/features/pipeline.py` | Feature engineering temporal |
-
-| ID | Tarea | Estado | Dependencias | Archivo(s) |
-|---|---|---|---|---|
-| T1.2.1 | Implementar `imputar_income` | ⬜ pendiente | T1.1.3 | `modelos/features/pipeline.py` |
-| T1.2.2 | Implementar `calcular_ratio_deuda_ingreso_ma` | ⬜ pendiente | T1.2.1 | `modelos/features/pipeline.py` |
-| T1.2.3 | Implementar `calcular_tendencia_utilizacion` | ⬜ pendiente | T1.2.1 | `modelos/features/pipeline.py` |
-| T1.2.4 | Implementar `calcular_volatilidad_pagos` | ⬜ pendiente | T1.2.1 | `modelos/features/pipeline.py` |
-| T1.2.5 | Implementar `generar_features` (orquestador) y verificar CSV de salida | ⬜ pendiente | T1.2.2, T1.2.3, T1.2.4 | `modelos/features/pipeline.py`, `db/features_dinamicos.csv` |
-"""
-
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from settings.settings import settings
 
 
-def imputar_ingreso(df: pd.DataFrame) -> pd.DataFrame:
+def impute_income(df: pd.DataFrame) -> pd.DataFrame:
     assert 'income' in df.columns
-
+    assert 'customer_id' in df.columns and 'month' in df.columns
+ 
     df = df.sort_values(['customer_id', 'month'])
-
-    def fill_income(group):
-        prev_3_mean = (
+ 
+    def fill_income(group: pd.DataFrame) -> pd.DataFrame:
+        previous_3_mean: pd.Series = (
             group['income']
             .shift(1)
             .rolling(window=3, min_periods=1)
             .mean()
         )
-
-        group['income'] = group['income'].fillna(prev_3_mean)
-
+ 
+        group['income'] = group['income'].fillna(previous_3_mean)
         group['income'] = group['income'].ffill().bfill()
-
+ 
         return group
-
+ 
     df = df.groupby('customer_id', group_keys=False).apply(fill_income)
-
+ 
     assert df['income'].isna().sum() == 0
-
+ 
     return df
 
 
 def calcular_ratio_deuda_ingreso_ma(df: pd.DataFrame) -> pd.DataFrame:
     assert 'outstanding_debt' in df.columns
     assert 'income' in df.columns
-
+ 
     df = df.sort_values(['customer_id', 'month'])
-
-    def add_ratio_deuda_ingreso_ma(group):
-        ratio_raw = group["outstanding_debt"] / group["income"]
-
-        group["ratio_deuda_ingreso_ma"] = (
-            ratio_raw.rolling(window=3, min_periods=1).mean()
+ 
+    def add_debt_income_ratio_ma(group: pd.DataFrame) -> pd.DataFrame:
+        raw_ratio: pd.Series = group['outstanding_debt'] / group['income']
+ 
+        group['ratio_deuda_ingreso_ma'] = (
+            raw_ratio.rolling(window=3, min_periods=1).mean()
         )
-
+ 
         return group
-    
-    df = df.groupby('customer_id', group_keys=False).apply(add_ratio_deuda_ingreso_ma)
-
-    assert df['ratio_deuda_ingreso_ma'] >= 0
-
+ 
+    df = df.groupby('customer_id', group_keys=False).apply(add_debt_income_ratio_ma)
+ 
+    assert 'ratio_deuda_ingreso_ma' in df.columns
+    assert df['ratio_deuda_ingreso_ma'].ge(0).all()
+ 
     return df
+
+def _linear_slope(window: np.ndarray) -> float:
+    assert window.ndim == 1
+    assert len(window) >= 0
+ 
+    if len(window) < 2:
+        return 0.0
+ 
+    x: np.ndarray = np.arange(len(window))
+    slope: float = float(np.polyfit(x, window, deg=1)[0])
+ 
+    return slope
 
 
 def calcular_tendencia_utilizacion(df: pd.DataFrame) -> pd.DataFrame:
     assert 'utilization_rate' in df.columns
-
+    assert 'customer_id' in df.columns
+ 
     df = df.sort_values(['customer_id', 'month'])
-
-    def add_utilization_rate(group):
-        
-        y = group['utilization_rate'].to_numpy()
-        slopes = np.zeros(len(group), dtype=float)
-
+ 
+    def add_utilization_trend(group: pd.DataFrame) -> pd.DataFrame:
+        values: np.ndarray = group['utilization_rate'].to_numpy()
+        slopes: np.ndarray = np.zeros(len(group), dtype=float)
+ 
         for i in range(len(group)):
-            start = max(0, i - 5)
-            window = y[start:i + 1]
-
-            if len(window) < 2:
-                slopes[i] = 0.0
-
-            else:
-                # Variable temporal: 0, 1, ..., n-1
-                x = np.arange(len(window))
-                slopes[i] = np.polyfit(x, window, deg=1)[0]
-        
+            start: int = max(0, i - 5)
+            slopes[i] = _linear_slope(values[start:i + 1])
+ 
         group['tendencia_utilizacion'] = slopes
-
+ 
         return group
-    
-    df = df.groupby('customer_id', group_keys=False).apply(add_utilization_rate)
-
+ 
+    df = df.groupby('customer_id', group_keys=False).apply(add_utilization_trend)
+ 
     assert 'tendencia_utilizacion' in df.columns
-
+    assert len(df) > 0
+ 
     return df
 
 def calcular_volatilidad_pagos(df: pd.DataFrame) -> pd.DataFrame:
     assert 'payment_amount' in df.columns
-
+    assert 'customer_id' in df.columns
+ 
     df = df.sort_values(['customer_id', 'month'])
-
-    def add_volatilidad_pagos(group):
+ 
+    def add_payment_volatility(group: pd.DataFrame) -> pd.DataFrame:
         group['volatilidad_pagos'] = (
             group['payment_amount']
             .shift(1)
             .rolling(window=3, min_periods=1)
             .std()
         )
-
+ 
         return group
-    
-    df = df.groupby('customer_id', group_keys=False).apply(add_volatilidad_pagos)
-
+ 
+    df = df.groupby('customer_id', group_keys=False).apply(add_payment_volatility)
+ 
     assert 'volatilidad_pagos' in df.columns
-
+    assert len(df) > 0
+ 
     return df
 
 
-def generar_features(ruta_entrada: Path, ruta_salida: Path) -> pd.DataFrame:
-    assert ruta_entrada.exists()
-    assert ruta_salida.parent.exists()
-
-    raw_transactions = pd.read_csv(ruta_entrada)
-
-    df = imputar_ingreso(raw_transactions)
-
+def generar_features(input_path: Path, output_path: Path) -> pd.DataFrame:
+    assert input_path.exists()
+    assert output_path.parent.exists()
+ 
+    raw_transactions: pd.DataFrame = pd.read_csv(input_path)
+ 
+    df: pd.DataFrame = impute_income(raw_transactions)
     df = calcular_ratio_deuda_ingreso_ma(df)
-
     df = calcular_tendencia_utilizacion(df)
-
     df = calcular_volatilidad_pagos(df)
-
-    df.to_csv(ruta_salida, index=False, encoding='utf-8')
-
-    assert ruta_salida.exists()
+ 
+    df.to_csv(output_path, index=False, encoding='utf-8')
+ 
+    assert output_path.exists()
+    assert len(df) == len(raw_transactions)
+ 
+    return df
