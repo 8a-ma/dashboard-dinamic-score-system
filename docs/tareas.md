@@ -35,11 +35,11 @@
 
 | ID | Tarea | Estado | Dependencias | Archivo(s) |
 |---|---|---|---|---|
-| T1.2.1 | Implementar `imputar_income` | ⬜ pendiente | T1.1.3 | `modelos/features/pipeline.py` |
-| T1.2.2 | Implementar `calcular_ratio_deuda_ingreso_ma` | ⬜ pendiente | T1.2.1 | `modelos/features/pipeline.py` |
-| T1.2.3 | Implementar `calcular_tendencia_utilizacion` | ⬜ pendiente | T1.2.1 | `modelos/features/pipeline.py` |
-| T1.2.4 | Implementar `calcular_volatilidad_pagos` | ⬜ pendiente | T1.2.1 | `modelos/features/pipeline.py` |
-| T1.2.5 | Implementar `generar_features` (orquestador) y verificar CSV de salida | ⬜ pendiente | T1.2.2, T1.2.3, T1.2.4 | `modelos/features/pipeline.py`, `db/features_dinamicos.csv` |
+| T1.2.1 | Implementar `imputar_income` | ✅ completado | T1.1.3 | `modelos/features/pipeline.py` |
+| T1.2.2 | Implementar `calcular_ratio_deuda_ingreso_ma` | ✅ completado | T1.2.1 | `modelos/features/pipeline.py` |
+| T1.2.3 | Implementar `calcular_tendencia_utilizacion` | ✅ completado | T1.2.1 | `modelos/features/pipeline.py` |
+| T1.2.4 | Implementar `calcular_volatilidad_pagos` | ✅ completado | T1.2.1 | `modelos/features/pipeline.py` |
+| T1.2.5 | Implementar `generar_features` (orquestador) y verificar CSV de salida | ✅ completado | T1.2.2, T1.2.3, T1.2.4 | `modelos/features/pipeline.py`, `db/features_dinamicos.csv` |
 
 ---
 
