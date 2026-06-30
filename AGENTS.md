@@ -239,6 +239,8 @@ dashboard-dinamic-score-system/
 │           └── dashboard_banco.py
 ├── scripts/
 │   └── transacciones.py
+├── settings/
+│   └── settings.py
 ├── tests/
 │   ├── conftest.py
 │   ├── test_features.py

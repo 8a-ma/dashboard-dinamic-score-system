@@ -40,6 +40,7 @@ El sistema es una **aplicación monolítica Python 3.12** que construye un motor
 | `gui/cliente/` | Dashboard del cliente (NiceGUI) |
 | `gui/banco/` | Dashboard del banco (NiceGUI) |
 | `tests/` | Suite pytest |
+| `settings/settings.py` | Clase con configuraciones globales para constantes |
 
 ---
 
@@ -126,6 +127,8 @@ dashboard-dinamic-score-system/
 │           └── dashboard_banco.py
 ├── scripts/
 │   └── transacciones.py
+├── settings/
+│   └── settings.py
 ├── tests/
 │   ├── conftest.py
 │   ├── test_features.py
