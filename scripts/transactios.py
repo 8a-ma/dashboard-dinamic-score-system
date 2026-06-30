@@ -5,15 +5,16 @@ import numpy as np
 import pandas as pd
 from typing import Any
 from pathlib import Path
+from settings.settings import settings
 
 
-SEED: int = 42
-N_CUSTOMERS:int = 500
-MONTHS: int = 24
+# SEED: int = 42
+# N_CUSTOMERS:int = 500
+# MONTHS: int = 24
 
-PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
-OUTPUT_DIR: Path = PROJECT_ROOT / "db"
-OUTPUT_FILE: Path = OUTPUT_DIR / "raw_transactions.csv"
+# PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
+# OUTPUT_DIR: Path = PROJECT_ROOT / "db"
+OUTPUT_FILE: Path = settings.OUTPUT_DIR / "raw_transactions.csv"
 
 
 def _clip(v: float, a: float, b: float) -> float:
@@ -44,7 +45,7 @@ def parsear_args() -> argparse.Namespace:
 
 def calulate_composition(n: int) -> dict[str, int]:
     assert n > 0
-    assert n == N_CUSTOMERS
+    assert n == settings.N_CUSTOMERS
 
     comp: dict[str, int] = {
         "good": int(0.40 * n),
@@ -62,7 +63,7 @@ def calulate_composition(n: int) -> dict[str, int]:
 
 def generate_customer_type(composition: dict[str, int]) -> list[str]:
     assert len(composition) == 5
-    assert sum(composition.values()) == N_CUSTOMERS
+    assert sum(composition.values()) == settings.N_CUSTOMERS
 
     types: list[str] = []
 
@@ -71,13 +72,13 @@ def generate_customer_type(composition: dict[str, int]) -> list[str]:
     
     np.random.shuffle(types)
 
-    assert len(types) == N_CUSTOMERS
+    assert len(types) == settings.N_CUSTOMERS
 
     return types
 
 
 def _row_good(month: int, base_income: float, credit_limit: float) -> tuple[dict[str, Any], float]:
-    assert 1 <= month <= MONTHS
+    assert 1 <= month <= settings.MONTHS
     assert credit_limit > 0
 
     season: float = 1 + 0.03 * np.sin(month / 12 * 2 * np.pi)
@@ -104,7 +105,7 @@ def _row_good(month: int, base_income: float, credit_limit: float) -> tuple[dict
 
 
 def _row_recurrent(month: int, base_income: float, credit_limit: float) -> dict[str, Any]:
-    assert 1 <= month <= MONTHS
+    assert 1 <= month <= settings.MONTHS
     assert credit_limit > 0
 
     season: float = 1 + 0.03 * np.sin(month / 12 * 2 * np.pi)
@@ -136,7 +137,7 @@ def _row_recurrent(month: int, base_income: float, credit_limit: float) -> dict[
 
 
 def _row_over(month: int, base_income: float, credit_limit: float) -> dict[str, Any]:
-    assert 1 <= month <= MONTHS
+    assert 1 <= month <= settings.MONTHS
     assert credit_limit > 0
 
     season: float = 1 + 0.03 * np.sin(month / 12 * 2 * np.pi)
@@ -177,7 +178,7 @@ def _row_over(month: int, base_income: float, credit_limit: float) -> dict[str, 
 
 
 def _row_fraud(month: int, base_income: float, credit_limit: float) -> dict[str, Any]:
-    assert 1 <= month <= MONTHS
+    assert 1 <= month <= settings.MONTHS
     assert credit_limit > 0
 
     income: float = base_income * float(np.random.uniform(1.8, 2.5))
@@ -214,7 +215,7 @@ def _row_fraud(month: int, base_income: float, credit_limit: float) -> dict[str,
 
 
 def _row_low(month: int, base_income: float, credit_limit: float) -> dict[str, Any]:
-    assert 1 <= month <= MONTHS
+    assert 1 <= month <= settings.MONTHS
     assert credit_limit > 0
 
     active: bool = bool(np.random.rand() < 0.35)
@@ -267,7 +268,7 @@ def generate_customer(customer_id: str, customer_type: str, base_income: float, 
     rows: list[dict[str, Any]] = []
     current_limit: float = credit_limit
 
-    for month in range(1, MONTHS + 1):
+    for month in range(1, settings.MONTHS + 1):
         if customer_type == "good":
             row, current_limit = _row_good(month, base_income, current_limit)
 
@@ -278,13 +279,13 @@ def generate_customer(customer_id: str, customer_type: str, base_income: float, 
         row["month"] = month
         rows.append(row)
 
-    assert len(rows) == MONTHS
+    assert len(rows) == settings.MONTHS
 
     return rows
 
 
 def generate_dataset(types: list[str]) -> pd.DataFrame:
-    assert len(types) == N_CUSTOMERS
+    assert len(types) == settings.N_CUSTOMERS
     assert set(types) <= {"good", "recurrent", "over", "fraud", "low"}
     
     rows: list[dict[str, Any]] = []
@@ -297,7 +298,7 @@ def generate_dataset(types: list[str]) -> pd.DataFrame:
 
     df: pd.DataFrame = pd.DataFrame(rows)
 
-    assert len(df) == N_CUSTOMERS * MONTHS
+    assert len(df) == settings.N_CUSTOMERS * settings.MONTHS
     assert set(df["customer_id"].str[0]) == {"C"}
 
     return df
@@ -320,18 +321,18 @@ def save_csv(df: pd.DataFrame, path: Path) -> None:
 
 
 def main() -> None:
-    assert SEED == 42
-    np.random.seed(SEED)
+    assert settings.SEED == 42
+    np.random.seed(settings.SEED)
     args: argparse.Namespace = parsear_args()
 
-    assert OUTPUT_DIR.parent.exists()
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    assert settings.OUTPUT_DIR.parent.exists()
+    os.makedirs(settings.OUTPUT_DIR, exist_ok=True)
 
     if OUTPUT_FILE.exists() and not args.force:
         print(f"Ya existe {OUTPUT_FILE}. Usa --force para regenerar.")
         sys.exit(0)
 
-    composicion: dict[str, int] = calulate_composition(N_CUSTOMERS)
+    composicion: dict[str, int] = calulate_composition(settings.N_CUSTOMERS)
     tipos: list[str] = generate_customer_type(composicion)
     df: pd.DataFrame = generate_dataset(tipos)
 

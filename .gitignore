@@ -15,6 +15,9 @@
 !gui/
 !gui/**
 
+!settings/
+!settings/**
+
 !*.gitignore
 !LICENSE
 !README.md
