@@ -18,6 +18,8 @@
 !settings/
 !settings/**
 
+**/__pycache__/
+
 !*.gitignore
 !LICENSE
 !README.md
