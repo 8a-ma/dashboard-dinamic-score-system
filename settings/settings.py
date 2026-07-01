@@ -7,7 +7,11 @@ class Settings:
     MONTHS: int = 24
 
     PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
-    OUTPUT_DIR: Path = PROJECT_ROOT / "db"
+    DB_PATH: Path = PROJECT_ROOT / "db"
 
+    RAW_TRANSACTIONS_PATH: Path = DB_PATH / "raw_transactions.csv"
+    FEATURES_PATH: Path = DB_PATH / "features_dinamicos.csv"
+    LOGISTICS_MODEL_PATH: Path = DB_PATH / "modelo_logistico.pkl"
+    LOGISTICS_MODEL_METRICS_PATH: Path = DB_PATH / "metricas_baseline.json"
 
 settings = Settings()
