@@ -2,111 +2,117 @@ import json
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from scipy import stats
 
 STATES: list[str] = ['outstanding_debt', 'income', 'utilization_rate', 'days_in_default']
 CONTROL: list[str] = ['credit_limit']
-OUT_OBS: list[str] = ['num_transactions', 'payment_amount']
+OBSERVABLE_OUTPUTS: list[str] = ['num_transactions', 'payment_amount']
+ALL_NUMERIC_COLS: list[str] = [*STATES, *CONTROL, *OBSERVABLE_OUTPUTS]
 
 
-def normalizar_datos(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, float]]:
-    assert df.shape[1] >= 5
-    assert [*STATES, *CONTROL] in df.columns
+def normalize_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, dict[str, float]]]:
+    assert pd.Index(ALL_NUMERIC_COLS).isin(df.columns).all()
+    assert not df.empty
 
     df = df[[*STATES, *CONTROL]]
 
-    params: dict[str, dict[str, float]] = {}
+    scale_params: dict[str, dict[str, float]]
+    df_norm: pd.DataFrame = df.copy()
 
-    for col in df.columns:
-        params[col] = {
-            'mean': df[col].mean(),
-            'std': df[col].std(ddof=0)
-        }
-    
-    df_zscore: pd.DataFrame = pd.DataFrame(stats.zscore(df, ddof=0), columns=df.columns)
+    means: pd.Series = df[ALL_NUMERIC_COLS].mean()
+    stds: pd.Series = df[ALL_NUMERIC_COLS].std(ddof=0)
 
-    return df_zscore, params
+    df_norm[ALL_NUMERIC_COLS] = (df[ALL_NUMERIC_COLS] - means) / stds
+
+    scale_params = {
+        col: {'mean': float(means[col]), 'std': float(stds[col])}
+        for col in ALL_NUMERIC_COLS
+    }
+
+    return df_norm, scale_params
 
 
-def construir_matrices_regresion(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
-    assert ['month', 'customer_id'] in df.columns
+def build_regression_matrices(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    assert pd.Index(['mont', 'customer_id', *STATES, *CONTROL]).isin(df.columns).all()
 
-    X_in: list[float] | np.ndarray = []
-    X_out: list[float] | np.ndarray = []
+    df_sorted = df.sort_values(['customer_id', 'month'])
 
-    for _, group in df.groupby('customer_id'):
-        group = group.sort_values('month')
+    is_last_month: pd.DataFrame = df_sorted['customer_id'] != df_sorted['customer_id'].shift(1)
 
-        x_mat: np.ndarray = group[STATES].values
-        u_mat: np.ndarray = group[CONTROL].values
+    x_all: np.ndarray = df_sorted[STATES].values
+    u_all: np.ndarray = df_sorted[CONTROL].values
 
-        x_t = x_mat[:-1, :]
-        u_t = u_mat[:-1, :]
+    xu_all: np.ndarray = np.hstack((x_all, u_all))
 
-        x_next = x_mat[1:, :]
+    x_next_all: pd.DataFrame = df_sorted[STATES].shift(-1).values
 
-        xu_t: np.ndarray = np.hstack((x_t, u_t))
+    valid_rows: np.ndarray = ~is_last_month.values
 
-        X_in.append(xu_t)
-        X_out.append(x_next)
-    
-    X_in = np.vstack(X_in)
-    X_out = np.vstack(X_in)
+    X_in: np.ndarray = xu_all[valid_rows]
+    X_out: np.ndarray = x_next_all[valid_rows]
 
     assert X_in.shape[0] == X_out.shape[0]
+    assert X_in.shape[1] == 5
 
     return X_in, X_out
 
 
-def identificar_AB(X_in: np.ndarray, X_out: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def identify_AB(X_in: np.ndarray, X_out: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     assert X_in.shape[1] == 5
+    assert X_in.shape[0] == X_out.shape[0]
 
     AB = X_out.T @ np.linalg.pinv(X_in.T)
 
     A = AB[:, :4]
     B = AB[:, 4:5]
 
-    assert A.shape == (4, 4) and B.shape == (4, 1)
+    assert A.shape == (4, 4)
+    assert B.shape == (4, 1)
 
     return A, B
 
 
-def identificar_C(df: pd.DataFrame, A: np.ndarray, B: np.ndarray) -> np.ndarray:
+def identify_C(df: pd.DataFrame, A: np.ndarray, B: np.ndarray) -> np.ndarray:
     assert A.shape == (4, 4) and B.shape == (4, 1)
+    assert pd.Index([*STATES, *OBSERVABLE_OUTPUTS]).isin(df.columns).all()
 
-    X = df[STATES].values
-    Y = df[OUT_OBS].values
+    X: np.ndarray = df[STATES].values
+    Y: np.ndarray = df[OBSERVABLE_OUTPUTS].values
 
-    C = Y.T @ np.linalg.pinv(X.T)
+    C: np.ndarray = Y.T @ np.linalg.pinv(X.T)
 
     assert C.shape == (2, 4)
 
     return C    
 
 
-def verificar_mse(A: np.ndarray, B: np.ndarray, X_in: np.ndarray, X_out: np.ndarray) -> float:
-    X_t = X_in[:, :4]
-    U_t = X_in[:, 4:5]
+def verify_mse(A: np.ndarray, B: np.ndarray, X_in: np.ndarray, X_out: np.ndarray) -> float:
+    assert A.shape == (4, 4) and B.shape == (4, 1)
+    assert X_in.shape[0] == X_out.shape[0]
 
-    X_next_pred = X_t @ A.T + U_t @ B.T
+    X_t: np.ndarray = X_in[:, :4]
+    U_t: np.ndarray = X_in[:, 4:5]
 
-    mse = float(np.mean((X_out - X_next_pred) ** 2))
+    X_next_pred: np.ndarray = X_t @ A.T + U_t @ B.T
+
+    mse: float = float(np.mean((X_out - X_next_pred) ** 2))
 
     assert mse < 0.05
 
     return mse
 
 
-def guardar_matrices(A: np.ndarray, B: np.ndarray, C: np.ndarray, params_escala: dict, path: Path) -> None:
+def save_matrices(A: np.ndarray, B: np.ndarray, C: np.ndarray, scale_params: dict[str, dict[str, float]], path: Path) -> None:
+    assert A.shape == (4, 4) and B.shape == (4, 1) and C.shape == (2, 4)
+    assert path.parent.exists()
+
     np.savez(path, A=A, B=B, C=C)
 
     json_path = path.with_suffix(".json")
-
     with open(json_path, "w", encoding='utf-8') as f:
-        json.dump(params_escala, f, indent=4)
+        json.dump(scale_params, f, indent=4)
 
 
-def cargar_matrices(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def load_matrices(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     assert path.exists()
 
     with np.load(path) as data:
@@ -114,23 +120,26 @@ def cargar_matrices(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         B: np.ndarray = data["B"]
         C: np.ndarray = data["C"]
     
+    assert A.shape == (4, 4) and C.shape == (2, 4)
+
     return A, B, C
 
 
-def identificar(features_path: Path, output_path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def identify(features_path: Path, output_path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    assert features_path.exists()
+
     if not output_path.exists():
         df = pd.read_csv(features_path)
 
-        df_zscore, params = normalizar_datos(df)
+        df_norm, scale_params = normalize_data(df)
 
-        X_in, X_out = construir_matrices_regresion(df_zscore)
+        X_in, X_out = build_regression_matrices(df_norm)
 
-        A, B = identificar_AB(X_in, X_out)
+        A, B = identify_AB(X_in, X_out)
+        C = identify_C(df_norm, A, B)
 
-        C= identificar_C(df_zscore, A, B)
+        _ = verify_mse(A, B, X_in, X_out)
 
-        _ = verificar_mse(A, B, X_in, X_out)
-
-        guardar_matrices(A, B, C, params, output_path)
+        save_matrices(A, B, C, scale_params, output_path)
     
-    return cargar_matrices(output_path)
+    return load_matrices(output_path)
