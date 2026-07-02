@@ -90,7 +90,6 @@ class FiltroKalman:
         P_trace = np.zeros(T)
 
         for t in range(T):
-            # U[t] e Y[t] se extraen y se les da forma de vector columna (N, 1)
             u_t = U[t].reshape(-1, 1)
             y_t = Y[t].reshape(-1, 1)
             
