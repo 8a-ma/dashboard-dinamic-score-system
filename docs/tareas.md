@@ -47,12 +47,12 @@
 
 | ID | Tarea | Estado | Dependencias | Archivo(s) |
 |---|---|---|---|---|
-| T1.3.1 | Implementar `_cargar_features` y `_construir_pipeline` | ⬜ pendiente | T1.2.5 | `modelos/estatico/logistico.py` |
-| T1.3.2 | Implementar `_calcular_metricas` (AUC, Gini, KS) | ⬜ pendiente | T1.3.1 | `modelos/estatico/logistico.py` |
-| T1.3.3 | Implementar `entrenar_y_guardar` con split estratificado 80/20 | ⬜ pendiente | T1.3.2 | `modelos/estatico/logistico.py` |
-| T1.3.4 | Implementar `cargar_modelo` y `predict_proba` | ⬜ pendiente | T1.3.3 | `modelos/estatico/logistico.py` |
-| T1.3.5 | Implementar `inicializar` (singleton .pkl) | ⬜ pendiente | T1.3.4 | `modelos/estatico/logistico.py` |
-| T1.3.6 | Verificar `.pkl` y `metricas_baseline.json` generados correctamente | ⬜ pendiente | T1.3.5 | `db/modelo_logistico.pkl`, `db/metricas_baseline.json` |
+| T1.3.1 | Implementar `_cargar_features` y `_construir_pipeline` | ✅ completado | T1.2.5 | `modelos/estatico/logistico.py` |
+| T1.3.2 | Implementar `_calcular_metricas` (AUC, Gini, KS) | ✅ completado | T1.3.1 | `modelos/estatico/logistico.py` |
+| T1.3.3 | Implementar `entrenar_y_guardar` con split estratificado 80/20 | ✅ completado | T1.3.2 | `modelos/estatico/logistico.py` |
+| T1.3.4 | Implementar `cargar_modelo` y `predict_proba` | ✅ completado | T1.3.3 | `modelos/estatico/logistico.py` |
+| T1.3.5 | Implementar `inicializar` (singleton .pkl) | ✅ completado | T1.3.4 | `modelos/estatico/logistico.py` |
+| T1.3.6 | Verificar `.pkl` y `metricas_baseline.json` generados correctamente | ✅ completado | T1.3.5 | `db/modelo_logistico.pkl`, `db/metricas_baseline.json` |
 
 ---
 
