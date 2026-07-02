@@ -60,13 +60,13 @@
 
 | ID | Tarea | Estado | Dependencias | Archivo(s) |
 |---|---|---|---|---|
-| T2.1.1 | Implementar `normalizar_datos` | ⬜ pendiente | T1.2.5 | `modelos/dinamico/identificacion.py` |
-| T2.1.2 | Implementar `construir_matrices_regresion` | ⬜ pendiente | T2.1.1 | `modelos/dinamico/identificacion.py` |
-| T2.1.3 | Implementar `identificar_AB` (regresión mínimos cuadrados) | ⬜ pendiente | T2.1.2 | `modelos/dinamico/identificacion.py` |
-| T2.1.4 | Implementar `identificar_C` | ⬜ pendiente | T2.1.3 | `modelos/dinamico/identificacion.py` |
-| T2.1.5 | Implementar `verificar_mse` (< 0.05 en escala normalizada) | ⬜ pendiente | T2.1.4 | `modelos/dinamico/identificacion.py` |
-| T2.1.6 | Implementar `guardar_matrices` y `cargar_matrices` | ⬜ pendiente | T2.1.5 | `modelos/dinamico/identificacion.py` |
-| T2.1.7 | Implementar `identificar` (orquestador con cache) y verificar `matrices_sistema.npz` | ⬜ pendiente | T2.1.6 | `db/matrices_sistema.npz` |
+| T2.1.1 | Implementar `normalizar_datos` | ✅ completado | T1.2.5 | `modelos/dinamico/identificacion.py` |
+| T2.1.2 | Implementar `construir_matrices_regresion` | ✅ completado | T2.1.1 | `modelos/dinamico/identificacion.py` |
+| T2.1.3 | Implementar `identificar_AB` (regresión mínimos cuadrados) | ✅ completado | T2.1.2 | `modelos/dinamico/identificacion.py` |
+| T2.1.4 | Implementar `identificar_C` | ✅ completado | T2.1.3 | `modelos/dinamico/identificacion.py` |
+| T2.1.5 | Implementar `verificar_mse` (< 0.05 en escala normalizada) | ✅ completado | T2.1.4 | `modelos/dinamico/identificacion.py` |
+| T2.1.6 | Implementar `guardar_matrices` y `cargar_matrices` | ✅ completado | T2.1.5 | `modelos/dinamico/identificacion.py` |
+| T2.1.7 | Implementar `identificar` (orquestador con cache) y verificar `matrices_sistema.npz` | ✅ completado | T2.1.6 | `db/matrices_sistema.npz` |
 
 ---
 
