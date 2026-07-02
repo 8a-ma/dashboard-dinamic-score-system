@@ -14,4 +14,7 @@ class Settings:
     LOGISTICS_MODEL_PATH: Path = DB_PATH / "modelo_logistico.pkl"
     LOGISTICS_MODEL_METRICS_PATH: Path = DB_PATH / "metricas_baseline.json"
 
+    MATRIX_SYSTEM_PATH: Path = DB_PATH / "matrices_sistema.npz"
+
+
 settings = Settings()
