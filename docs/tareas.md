@@ -74,11 +74,11 @@
 
 | ID | Tarea | Estado | Dependencias | Archivo(s) |
 |---|---|---|---|---|
-| T2.2.1 | Implementar clase `FiltroKalman.__init__` | ⬜ pendiente | T2.1.7 | `modelos/dinamico/kalman.py` |
-| T2.2.2 | Implementar `predecir` (predicción a priori) | ⬜ pendiente | T2.2.1 | `modelos/dinamico/kalman.py` |
-| T2.2.3 | Implementar `actualizar` con manejo de NaN (EARS-K03) | ⬜ pendiente | T2.2.2 | `modelos/dinamico/kalman.py` |
-| T2.2.4 | Implementar `_simetrizar_covarianza` con detección de autovalores negativos | ⬜ pendiente | T2.2.3 | `modelos/dinamico/kalman.py` |
-| T2.2.5 | Implementar `paso` y `ejecutar_secuencia` | ⬜ pendiente | T2.2.4 | `modelos/dinamico/kalman.py` |
+| T2.2.1 | Implementar clase `FiltroKalman.__init__` | ✅ completado | T2.1.7 | `modelos/dinamico/kalman.py` |
+| T2.2.2 | Implementar `predecir` (predicción a priori) | ✅ completado | T2.2.1 | `modelos/dinamico/kalman.py` |
+| T2.2.3 | Implementar `actualizar` con manejo de NaN (EARS-K03) | ✅ completado | T2.2.2 | `modelos/dinamico/kalman.py` |
+| T2.2.4 | Implementar `_simetrizar_covarianza` con detección de autovalores negativos | ✅ completado | T2.2.3 | `modelos/dinamico/kalman.py` |
+| T2.2.5 | Implementar `paso` y `ejecutar_secuencia` | ✅ completado | T2.2.4 | `modelos/dinamico/kalman.py` |
 
 ---
 
