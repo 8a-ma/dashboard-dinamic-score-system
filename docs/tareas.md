@@ -86,10 +86,10 @@
 
 | ID | Tarea | Estado | Dependencias | Archivo(s) |
 |---|---|---|---|---|
-| T2.3.1 | Implementar `matrices_costo_default` | ⬜ pendiente | T2.2.5 | `modelos/dinamico/controlador.py` |
-| T2.3.2 | Implementar `calcular_ganancia_lqr` con DARE de scipy | ⬜ pendiente | T2.3.1 | `modelos/dinamico/controlador.py` |
-| T2.3.3 | Implementar `decidir_limite` con saturación en [0, max] | ⬜ pendiente | T2.3.2 | `modelos/dinamico/controlador.py` |
-| T2.3.4 | Implementar `score_dinamico` normalizado [0,1] | ⬜ pendiente | T2.3.3 | `modelos/dinamico/controlador.py` |
+| T2.3.1 | Implementar `matrices_costo_default` | ✅ completado | T2.2.5 | `modelos/dinamico/controlador.py` |
+| T2.3.2 | Implementar `calcular_ganancia_lqr` con DARE de scipy | ✅ completado | T2.3.1 | `modelos/dinamico/controlador.py` |
+| T2.3.3 | Implementar `decidir_limite` con saturación en [0, max] | ✅ completado | T2.3.2 | `modelos/dinamico/controlador.py` |
+| T2.3.4 | Implementar `score_dinamico` normalizado [0,1] | ✅ completado | T2.3.3 | `modelos/dinamico/controlador.py` |
 
 ---
 
