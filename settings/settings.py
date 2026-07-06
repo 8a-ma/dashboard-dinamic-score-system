@@ -16,5 +16,7 @@ class Settings:
 
     MATRIX_SYSTEM_PATH: Path = DB_PATH / "matrices_sistema.npz"
 
+    SQLITE_DB: Path = DB_PATH / "db.db"
+
 
 settings = Settings()
