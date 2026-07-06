@@ -16,7 +16,7 @@ def calculate_lqr_gain(A: np.ndarray, B: np.ndarray, Q_lqr: np.ndarray, R_lqr: n
 
 def decide_credit_limit(K: np.ndarray, x_hat: np.ndarray, credit_limit_max: float) -> float:
     assert x_hat.shape == (4, 1)
-    assert K.shape == (4, 1)
+    assert K.shape == (1, 4)
 
     u_b: float = float(-K @ x_hat)
     recommended_limit: float = max(0.0, min(credit_limit_max, u_b))
