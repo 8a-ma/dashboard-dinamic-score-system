@@ -13,10 +13,10 @@ class Settings:
     FEATURES_PATH: Path = DB_PATH / "features_dinamicos.csv"
     LOGISTICS_MODEL_PATH: Path = DB_PATH / "modelo_logistico.pkl"
     LOGISTICS_MODEL_METRICS_PATH: Path = DB_PATH / "metricas_baseline.json"
-
     MATRIX_SYSTEM_PATH: Path = DB_PATH / "matrices_sistema.npz"
+    COMPARISON_PATH: Path = DB_PATH / "comparacion_modelos.json"
 
-    SQLITE_DB: Path = DB_PATH / "db.db"
+    SQLITE_DB: Path = DB_PATH / "credito.db"
 
 
 settings = Settings()

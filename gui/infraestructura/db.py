@@ -1,66 +1,22 @@
 import sqlite3
 from pathlib import Path
-from settings.settings import settings
 
 
-class DatabaseManager:
-    def __init__(self, db_path: Path):
-        self.db_path = db_path
-        
-        self.conn: sqlite3.Connection | None = None
-        self.connect()
-    
-    def connect(self) -> None:
-        try:
-            self.conn = sqlite3.connect(self.db_path)
-        
-        except sqlite3.Error as e:
-            return
-    
-    def execute(self, query_sql: str, params: tuple = ()):
-        """Insert, Update, Delete, Create"""
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute(query_sql, params)
-            self.conn.commit()
+def inicializar_db(path: Path) -> sqlite3.Connection:
+    assert path.parent.exists()
+    assert path.suffix == ".db"
 
-            return cursor.rowcount
+    conn: sqlite3.Connection = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
 
-        except sqlite3.Error as e:
-            self.conn.rollback()
-            return None
-    
-    def query(self, query_sql: str, params: tuple = ()):
-        "Select"
-
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute(query_sql, params)
-            
-            return cursor.fetchall()
-
-        except sqlite3.Error as e:
-            return []
-
-    def close(self):
-        if self.conn:
-            self.conn.close()
-
-db = DatabaseManager(settings.SQLITE_DB)
-
-
-def init_db():
-    db.execute(
-        """
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS customers (
             customer_id TEXT PRIMARY KEY,
             archetype   TEXT NOT NULL
-        );
-        """
-    )
+        )
+    """)
 
-    db.execute(
-        """
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS monthly_states (
             customer_id       TEXT,
             month             INTEGER,
@@ -74,12 +30,10 @@ def init_db():
             transaction_vol   REAL,
             default_indicator INTEGER,
             PRIMARY KEY (customer_id, month)
-        );
-        """
-    )
+        )
+    """)
 
-    db.execute(
-        """
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS estimated_states (
             customer_id    TEXT,
             month          INTEGER,
@@ -90,12 +44,10 @@ def init_db():
             p_trace        REAL,
             score_dinamico REAL,
             PRIMARY KEY (customer_id, month)
-        );
-        """
-    )
+        )
+    """)
 
-    db.execute(
-        """
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS decisions (
             customer_id       TEXT,
             month             INTEGER,
@@ -103,18 +55,31 @@ def init_db():
             score_dinamico    REAL,
             score_logistico   REAL,
             PRIMARY KEY (customer_id, month)
-        );
-        """
-    )
+        )
+    """)
 
-    db.execute(
-        """
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS metrics (
-            modelo TEXT,
+            modelo  TEXT,
             metrica TEXT,
-            valor  REAL,
-            mes    INTEGER,
+            valor   REAL,
+            mes     INTEGER,
             PRIMARY KEY (modelo, metrica, mes)
-        );
-        """
-    )
+        )
+    """)
+
+    conn.commit()
+
+    assert path.exists()
+
+    return conn
+
+
+def obtener_conexion(path: Path) -> sqlite3.Connection:
+    assert path.exists()
+    assert path.suffix == ".db"
+
+    conn: sqlite3.Connection = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+
+    return conn
