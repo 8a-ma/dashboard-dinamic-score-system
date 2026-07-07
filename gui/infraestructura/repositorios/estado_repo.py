@@ -2,81 +2,64 @@ import sqlite3
 
 
 def insert_monthly_state(conn: sqlite3.Connection, state: dict) -> None:
-    assert ("customer_id", "month") in list(state.keys())
+    assert "customer_id" in state
+    assert "month" in state
 
     cols: str = ", ".join(state.keys())
     values: str = ", ".join([f":{k}" for k in state.keys()])
 
-    sql: str = f"INSERT INTO monthly_states ({cols}) VALUES ({values})"
+    sql: str = f"INSERT OR REPLACE INTO monthly_states ({cols}) VALUES ({values})"
 
-    try:
-        cursor = conn.cursor()
-        cursor.execute(sql, state)
-        conn.commit()
-    
-    except sqlite3.Error:
-        pass
-
-    finally:
-        conn.close()
+    cursor: sqlite3.Cursor = conn.cursor()
+    cursor.execute(sql, state)
+    conn.commit()
 
 
 def insert_estimate_state(conn: sqlite3.Connection, estimate: dict) -> None:
-    assert ("customer_id", "month") in list(estimate.keys())
+    assert "customer_id" in estimate
+    assert "month" in estimate
 
     cols: str = ", ".join(estimate.keys())
     values: str = ", ".join([f":{k}" for k in estimate.keys()])
 
-    sql: str = f"INSERT INTO estimated_states ({cols}) VALUES ({values})"
+    sql: str = f"INSERT OR REPLACE INTO estimated_states ({cols}) VALUES ({values})"
 
-    try:
-        cursor = conn.cursor()
-        cursor.execute(sql, estimate)
-        conn.commit()
+    cursor: sqlite3.Cursor = conn.cursor()
+    cursor.execute(sql, estimate)
+    conn.commit()
+
+
+def get_trajectory(conn: sqlite3.Connection, customer_id: str) -> list[dict]:
+    assert isinstance(customer_id, str)
+    assert len(customer_id) > 0
     
-    except sqlite3.Error:
-        pass
-
-    finally:
-        conn.close()
-
-def get_track(conn: sqlite3.Connection, customer_id: str) -> list[dict]:
     sql: str = """
-        SELECT
-            *
+        SELECT *
         FROM monthly_states
-        WHERE
-            customer_id = ?
+        WHERE customer_id = ?
+        ORDER BY month ASC
     """
 
-    try:
-        cursor = conn.cursor()
-        cursor.execute(sql, (customer_id,))
-        return cursor.fetchall()
-    
-    except sqlite3.Error:
-        pass
+    cursor: sqlite3.Cursor = conn.cursor()
+    cursor.execute(sql, (customer_id,))
+    rows: list = cursor.fetchall()
 
-    finally:
-        conn.close()
+    return [dict(row) for row in rows]
 
 
-def get_estimate_state(conn: sqlite3.Connection, customer_id: str) -> list[dict]:
+def get_estimated_state(conn: sqlite3.Connection, customer_id: str) -> list[dict]:
+    assert isinstance(customer_id, str)
+    assert len(customer_id) > 0
+
     sql: str = """
-        SELECT
-            *
+        SELECT *
         FROM estimated_states
-        WHERE
-            customer_id = ?
+        WHERE customer_id = ?
+        ORDER BY month ASC
     """
 
-    try:
-        cursor = conn.cursor()
-        cursor.execute(sql, (customer_id,))
-        return cursor.fetchall()
-    
-    except sqlite3.Error:
-        pass
+    cursor: sqlite3.Cursor = conn.cursor()
+    cursor.execute(sql, (customer_id,))
+    rows: list = cursor.fetchall()
 
-    finally:
-        conn.close()
+    return [dict(row) for row in rows]
