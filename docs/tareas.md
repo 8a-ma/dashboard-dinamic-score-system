@@ -97,10 +97,10 @@
 
 | ID | Tarea | Estado | Dependencias | Archivo(s) |
 |---|---|---|---|---|
-| T3.0.1 | Implementar `inicializar_db` y `obtener_conexion` | ⬜ pendiente | T0.1 | `gui/infraestructura/db.py` |
-| T3.0.2 | Implementar `CustomerRepository` | ⬜ pendiente | T3.0.1 | `gui/infraestructura/repositorios/cliente_repo.py` |
-| T3.0.3 | Implementar `EstadoRepository` | ⬜ pendiente | T3.0.1 | `gui/infraestructura/repositorios/estado_repo.py` |
-| T3.0.4 | Implementar `DecisionRepository` | ⬜ pendiente | T3.0.1 | `gui/infraestructura/repositorios/decision_repo.py` |
+| T3.0.1 | Implementar `inicializar_db` y `obtener_conexion` | ✅ completado | T0.1 | `gui/infraestructura/db.py` |
+| T3.0.2 | Implementar `CustomerRepository` | ✅ completado | T3.0.1 | `gui/infraestructura/repositorios/cliente_repo.py` |
+| T3.0.3 | Implementar `EstadoRepository` | ✅ completado | T3.0.1 | `gui/infraestructura/repositorios/estado_repo.py` |
+| T3.0.4 | Implementar `DecisionRepository` | ✅ completado | T3.0.1 | `gui/infraestructura/repositorios/decision_repo.py` |
 
 ---
 
