@@ -18,5 +18,10 @@ class Settings:
 
     SQLITE_DB: Path = DB_PATH / "credito.db"
 
+    GUI: Path = PROJECT_ROOT / "gui"
+    CSS_GLOBAL: Path = GUI / "global.css"
+    CSS_CUSTOMER: Path = GUI / "cliente" / "styles.css"
+    CSS_BANK: Path = GUI / "banco" / "styles.css"
+
 
 settings = Settings()
