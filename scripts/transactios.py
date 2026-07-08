@@ -338,9 +338,6 @@ def main() -> None:
 
     save_csv(df, OUTPUT_FILE)
 
-    print(f"Dataset generado: {OUTPUT_FILE}")
-    print(df.head())
-
 
 if __name__ == "__main__":
     main()
