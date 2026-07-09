@@ -15,7 +15,6 @@ def impute_income(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     df['income'] = df['income'].fillna(previous_3_mean)
-
     df['income'] = df.groupby('customer_id', group_keys=False)['income'].transform(lambda x: x.ffill().bfill())
  
     assert df['income'].isna().sum() == 0
@@ -101,6 +100,21 @@ def calcular_volatilidad_pagos(df: pd.DataFrame) -> pd.DataFrame:
  
     return df
 
+def calcular_days_in_default_lag1(df: pd.DataFrame) -> pd.DataFrame:
+    assert 'days_in_default' in df.columns
+    assert 'customer_id' in df.columns and 'month' in df.columns
+ 
+    df = df.sort_values(['customer_id', 'month'])
+ 
+    df['days_in_default_lag1'] = (
+        df.groupby('customer_id', group_keys=False)['days_in_default']
+        .transform(lambda x: x.shift(1).fillna(0.0))
+    )
+ 
+    assert 'days_in_default_lag1' in df.columns
+    assert df['days_in_default_lag1'].isna().sum() == 0
+ 
+    return df
 
 def generar_features(input_path: Path, output_path: Path) -> pd.DataFrame:
     assert input_path.exists()
@@ -112,6 +126,7 @@ def generar_features(input_path: Path, output_path: Path) -> pd.DataFrame:
     df = calcular_ratio_deuda_ingreso_ma(df)
     df = calcular_tendencia_utilizacion(df)
     df = calcular_volatilidad_pagos(df)
+    df = calcular_days_in_default_lag1(df)
  
     df.to_csv(output_path, index=False, encoding='utf-8')
  

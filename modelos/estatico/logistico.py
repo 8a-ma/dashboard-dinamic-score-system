@@ -56,21 +56,34 @@ def _calculate_metrics(y_true: np.ndarray, y_prob: np.ndarray) -> dict[str, floa
     
     return metrics
 
+def _temporal_split(df: pd.DataFrame, test_months: int) -> tuple[pd.DataFrame, pd.DataFrame]:
+    assert 'month' in df.columns and 'customer_id' in df.columns
+    assert test_months > 0
+ 
+    max_month: int = int(df['month'].max())
+    cutoff: int = max_month - test_months
+ 
+    train: pd.DataFrame = df[df['month'] <= cutoff].copy()
+    test: pd.DataFrame = df[df['month'] > cutoff].copy()
+ 
+    assert len(train) > 0 and len(test) > 0
+ 
+    return train, test
+
 def train_and_save(features_path: Path, model_path: Path, metrics_path: Path) -> None:
     assert not model_path.exists()
     assert features_path.exists()
 
     df: pd.DataFrame = _load_features(features_path).dropna(subset=settings.FEATURE_COLUMNS)
+    
+    train_df: pd.DataFrame
+    test_df: pd.DataFrame
+    train_df, test_df = _temporal_split(df, settings.TEST_MONTHS)
 
-    y: np.ndarray = df[settings.TARGET_COLUMN].values
-    X: pd.DataFrame = df[settings.FEATURE_COLUMNS]
-
-    X_train: pd.DataFrame
-    X_test: pd.DataFrame
-    y_train: np.ndarray
-    y_test: np.ndarray
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
+    X_train: pd.DataFrame = train_df[settings.FEATURE_COLUMNS]
+    y_train: np.ndarray = train_df[settings.TARGET_COLUMN].values
+    X_test: pd.DataFrame = test_df[settings.FEATURE_COLUMNS]
+    y_test: np.ndarray = test_df[settings.TARGET_COLUMN].values
 
     pipeline: Pipeline = _build_pipeline()
     pipeline.fit(X_train, y_train)
@@ -108,7 +121,7 @@ def predict_proba(customer_id: str, month: int, df_features: pd.DataFrame, model
 
     assert not row.empty
 
-    probability: float = float(model.predict_proba(row))[:, 1][0]
+    probability: float = float(model.predict_proba(row)[:, 1][0])
 
     assert 0.0 <= probability <= 1.0
 

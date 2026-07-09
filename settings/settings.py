@@ -5,6 +5,7 @@ class Settings:
     SEED: int = 42
     N_CUSTOMERS:int = 500
     MONTHS: int = 24
+    TEST_MONTHS: int = 6
 
     PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
     DB_PATH: Path = PROJECT_ROOT / "db"
@@ -38,7 +39,7 @@ class Settings:
         'tendencia_utilizacion',
         'volatilidad_pagos',
         'utilization_rate',
-        'days_in_default',
+        'days_in_default_lag1',
         'num_transactions'
     ]
     TARGET_COLUMN: str = 'default_indicator'
