@@ -34,7 +34,7 @@ def build_regression_matrices(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]
 
     df_sorted = df.sort_values(['customer_id', 'month'])
 
-    is_last_month: pd.DataFrame = df_sorted['customer_id'] != df_sorted['customer_id'].shift(1)
+    is_last_month: pd.DataFrame = df_sorted['customer_id'] != df_sorted['customer_id'].shift(-1)
 
     x_all: np.ndarray = df_sorted[settings.STATES].values
     u_all: np.ndarray = df_sorted[settings.CONTROL].values
@@ -50,6 +50,7 @@ def build_regression_matrices(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]
 
     assert X_in.shape[0] == X_out.shape[0]
     assert X_in.shape[1] == 5
+    assert not np.isnan(X_out).any()
 
     return X_in, X_out
 
