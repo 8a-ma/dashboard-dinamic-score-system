@@ -8,11 +8,11 @@ from pathlib import Path
 from sklearn.pipeline import Pipeline
 from settings.settings import settings
 from modelos.dinamico.kalman import FiltroKalman
-from modelos.dinamico.identificacion import (load_matrices)
+from modelos.dinamico.identificacion import load_matrices
 from gui.infraestructura.repositorios.decision_repo import insert_decision
 from modelos.estatico.logistico import _calculate_metrics, load_model
-from gui.infraestructura.repositorios.estado_repo import (insert_estimate_state, insert_monthly_state)
-from modelos.dinamico.controlador import (calculate_lqr_gain, decide_credit_limit, dynamic_score, default_cost_matrices)
+from gui.infraestructura.repositorios.estado_repo import insert_estimate_state, insert_monthly_state
+from modelos.dinamico.controlador import calculate_lqr_gain, decide_credit_limit, dynamic_score, default_cost_matrices
 
 
 def calculate_month_loss(outstanding_debt: float, default_flag: int, recovery_rate: float = settings.RECOVERY_RATE) -> float:
@@ -60,7 +60,7 @@ def _simulate_customer_kalman(df: pd.DataFrame, A: np.ndarray, B: np.ndarray, C:
     rows: list[dict] = []
 
     for _, row in df.sort_values('month').iterrows():
-        u_t: np.ndarray = _normalize_vector(row, scale_params, [settings.CONTROL]).reshape(1, 1)
+        u_t: np.ndarray = _normalize_vector(row, scale_params, [settings.CONTROL[0]]).reshape(1, 1)
         y_nan: bool = pd.isna(row.get('num_transactions')) or pd.isna(row.get('payment_amount'))
         y_t: np.ndarray = np.full((2, 1), np.nan) if y_nan else _normalize_vector(row, scale_params, settings.OBSERVATIONS).reshape(2, 1)
  
@@ -88,9 +88,9 @@ def simulate_dynamic_model(df: pd.DataFrame,A: np.ndarray, B: np.ndarray, C: np.
     assert 'customer_id' in df.columns and not df.empty
     assert A.shape == (4, 4) and K.shape == (1, 4)
  
-    cl_std: float = scale_params[settings.CONTROL]['std']
-    cl_mean: float = scale_params[settings.CONTROL]['mean']
-    credit_limit_max_norm: float = (float(df[settings.CONTROL].max()) - cl_mean) / cl_std if cl_std > 0 else 1.0
+    cl_std: float = scale_params[settings.CONTROL[0]]['std']
+    cl_mean: float = scale_params[settings.CONTROL[0]]['mean']
+    credit_limit_max_norm: float = (float(df[settings.CONTROL[0]].max()) - cl_mean) / cl_std if cl_std > 0 else 1.0
  
     all_rows: list[dict] = []
     for _, group in df.groupby('customer_id'):
@@ -226,32 +226,37 @@ def run_backtesting(features_path: Path, matrices_path: Path, model_path: Path, 
         raise FileNotFoundError(f"[Fase 3] Matrices no encontradas: {matrices_path}")
     if not features_path.exists():
         raise FileNotFoundError(f"[Fase 3] Features no encontradas: {features_path}")
+    
+    if not output_json_path.exists():
  
-    assert output_json_path.suffix == '.json'
+        assert output_json_path.suffix == '.json'
+    
+        model: Pipeline = load_model(model_path)
+    
+        A, B, C = load_matrices(matrices_path)
+    
+        scale_params_path: Path = matrices_path.with_suffix('.json')
+        with open(scale_params_path, 'r', encoding='utf-8') as f:
+            scale_params: dict = json.load(f)
+    
+        Q_lqr, R_lqr = default_cost_matrices()
+        K: np.ndarray = calculate_lqr_gain(A, B, Q_lqr, R_lqr)
+        Q_k: np.ndarray = np.diag([0.01, 0.01, 0.01, 0.01])
+        R_k: np.ndarray = np.diag([0.1, 0.1])
+    
+        df_features: pd.DataFrame = pd.read_csv(features_path)
+    
+        logistic_results: pd.DataFrame = simulate_logistic_model(df_features, model)
+        dynamic_results: pd.DataFrame = simulate_dynamic_model(df_features, A, B, C, K, Q_k, R_k, scale_params)
+    
+        comparison: dict = compare_models(logistic_results, dynamic_results)
+        save_comparison(comparison, output_json_path)
+        populate_sqlite(conn, dynamic_results, logistic_results, df_features)
+    
+        assert output_json_path.exists()
  
-    model: Pipeline = load_model(model_path)
- 
-    A, B, C = load_matrices(matrices_path)
- 
-    scale_params_path: Path = matrices_path.with_suffix('.json')
-    with open(scale_params_path, 'r', encoding='utf-8') as f:
-        scale_params: dict = json.load(f)
- 
-    Q_lqr, R_lqr = default_cost_matrices()
-    K: np.ndarray = calculate_lqr_gain(A, B, Q_lqr, R_lqr)
-    Q_k: np.ndarray = np.diag([0.01, 0.01, 0.01, 0.01])
-    R_k: np.ndarray = np.diag([0.1, 0.1])
- 
-    df_features: pd.DataFrame = pd.read_csv(features_path)
- 
-    logistic_results: pd.DataFrame = simulate_logistic_model(df_features, model)
-    dynamic_results: pd.DataFrame = simulate_dynamic_model(df_features, A, B, C, K, Q_k, R_k, scale_params)
- 
-    comparison: dict = compare_models(logistic_results, dynamic_results)
-    save_comparison(comparison, output_json_path)
-    populate_sqlite(conn, dynamic_results, logistic_results, df_features)
- 
-    assert output_json_path.exists()
- 
+    with open(output_json_path, 'r+') as f:
+        comparison: dict = f
+    
     return comparison
 
