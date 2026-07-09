@@ -33,5 +33,15 @@ class Settings:
         'num_transactions', 'transaction_volatility', 'default_indicator'
     ]
 
+    FEATURE_COLUMNS: list[str] = [
+        'ratio_deuda_ingreso_ma',
+        'tendencia_utilizacion',
+        'volatilidad_pagos',
+        'utilization_rate',
+        'days_in_default',
+        'num_transactions'
+    ]
+    TARGET_COLUMN: str = 'default_indicator'
+
 
 settings = Settings()

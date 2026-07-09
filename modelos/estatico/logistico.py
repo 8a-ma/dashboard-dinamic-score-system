@@ -4,22 +4,12 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from sklearn.pipeline import Pipeline
+from settings.settings import settings
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score, roc_curve
 from sklearn.model_selection import train_test_split
 
-
-FEATURE_COLUMNS: list[str] = [
-        'ratio_deuda_ingreso_ma',
-        'tendencia_utilizacion',
-        'volatilidad_pagos',
-        'utilization_rate',
-        'days_in_default',
-        'num_transactions'
-    ]
-
-TARGET_COLUMN: str = 'default_indicator'
 
 def _load_features(path: Path) -> pd.DataFrame:
     assert path.exists()
@@ -70,10 +60,10 @@ def train_and_save(features_path: Path, model_path: Path, metrics_path: Path) ->
     assert not model_path.exists()
     assert features_path.exists()
 
-    df: pd.DataFrame = _load_features(features_path).dropna(subset=FEATURE_COLUMNS)
+    df: pd.DataFrame = _load_features(features_path).dropna(subset=settings.FEATURE_COLUMNS)
 
-    y: np.ndarray = df[TARGET_COLUMN].values
-    X: pd.DataFrame = df[FEATURE_COLUMNS]
+    y: np.ndarray = df[settings.TARGET_COLUMN].values
+    X: pd.DataFrame = df[settings.FEATURE_COLUMNS]
 
     X_train: pd.DataFrame
     X_test: pd.DataFrame
@@ -112,7 +102,7 @@ def predict_proba(customer_id: str, month: int, df_features: pd.DataFrame, model
 
     row:pd.DataFrame = (
         df_features
-        .query("customer_id == @customer_id and month == @month")[FEATURE_COLUMNS]
+        .query("customer_id == @customer_id and month == @month")[settings.FEATURE_COLUMNS]
         .fillna(0.0)
     )
 
