@@ -18,7 +18,11 @@ def decide_credit_limit(K: np.ndarray, x_hat: np.ndarray, credit_limit_max: floa
     assert x_hat.shape == (4, 1)
     assert K.shape == (1, 4)
 
-    u_b: float = float(-K @ x_hat)
+    result: np.ndarray = -K @ x_hat
+    assert result.shape == (1, 1)
+
+    u_b: float = float(result[0, 0])  
+
     recommended_limit: float = max(0.0, min(credit_limit_max, u_b))
 
     assert 0.0 <= recommended_limit <= credit_limit_max
