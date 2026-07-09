@@ -108,14 +108,14 @@
 
 | ID | Tarea | Estado | Dependencias | Archivo(s) |
 |---|---|---|---|---|
-| T3.1 | Implementar `calcular_perdida_mes` | ⬜ pendiente | T1.3.6, T2.3.4, T3.0.4 | `modelos/evaluacion/backtesting.py` |
-| T3.2 | Implementar `simular_modelo_logistico` | ⬜ pendiente | T3.1 | `modelos/evaluacion/backtesting.py` |
-| T3.3 | Implementar `simular_modelo_dinamico` | ⬜ pendiente | T3.1 | `modelos/evaluacion/backtesting.py` |
-| T3.4 | Implementar `calcular_gini_ks_auc` y `calcular_psi` | ⬜ pendiente | T3.2, T3.3 | `modelos/evaluacion/backtesting.py` |
-| T3.5 | Implementar `calcular_psi_serie` | ⬜ pendiente | T3.4 | `modelos/evaluacion/backtesting.py` |
-| T3.6 | Implementar `comparar_modelos` con advertencia si reducción < 5% | ⬜ pendiente | T3.5 | `modelos/evaluacion/backtesting.py` |
-| T3.7 | Implementar `guardar_comparacion` y `poblar_sqlite` | ⬜ pendiente | T3.6 | `modelos/evaluacion/backtesting.py` |
-| T3.8 | Implementar `ejecutar_backtesting` (orquestador) y verificar salidas | ⬜ pendiente | T3.7 | `db/comparacion_modelos.json`, `db/credito.db` |
+| T3.1 | Implementar `calcular_perdida_mes` | ✅ completado | T1.3.6, T2.3.4, T3.0.4 | `modelos/evaluacion/backtesting.py` |
+| T3.2 | Implementar `simular_modelo_logistico` | ✅ completado | T3.1 | `modelos/evaluacion/backtesting.py` |
+| T3.3 | Implementar `simular_modelo_dinamico` | ✅ completado | T3.1 | `modelos/evaluacion/backtesting.py` |
+| T3.4 | Implementar `calcular_gini_ks_auc` y `calcular_psi` | ✅ completado | T3.2, T3.3 | `modelos/evaluacion/backtesting.py` |
+| T3.5 | Implementar `calcular_psi_serie` | ✅ completado | T3.4 | `modelos/evaluacion/backtesting.py` |
+| T3.6 | Implementar `comparar_modelos` con advertencia si reducción < 5% | ✅ completado | T3.5 | `modelos/evaluacion/backtesting.py` |
+| T3.7 | Implementar `guardar_comparacion` y `poblar_sqlite` | ✅ completado | T3.6 | `modelos/evaluacion/backtesting.py` |
+| T3.8 | Implementar `ejecutar_backtesting` (orquestador) y verificar salidas | ✅ completado | T3.7 | `db/comparacion_modelos.json`, `db/credito.db` |
 
 ---
 
