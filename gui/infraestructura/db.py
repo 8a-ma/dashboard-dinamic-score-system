@@ -76,8 +76,13 @@ def inicializar_db(path: Path) -> sqlite3.Connection:
 
 
 def obtener_conexion(path: Path) -> sqlite3.Connection:
-    assert path.exists()
+    assert path.parent.exists()
     assert path.suffix == ".db"
+
+    if not path.exists():
+        conn = inicializar_db(path)
+
+        return conn
 
     conn: sqlite3.Connection = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
