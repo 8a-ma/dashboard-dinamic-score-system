@@ -3,11 +3,10 @@ import warnings
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from settings.settings import settings
 
-STATES: list[str] = ['outstanding_debt', 'income', 'utilization_rate', 'days_in_default']
-CONTROL: list[str] = ['credit_limit']
-OBSERVABLE_OUTPUTS: list[str] = ['num_transactions', 'payment_amount']
-ALL_NUMERIC_COLS: list[str] = [*STATES, *CONTROL, *OBSERVABLE_OUTPUTS]
+
+ALL_NUMERIC_COLS: list[str] = [*settings.STATES, *settings.CONTROL, *settings.OBSERVATIONS]
 
 
 def normalize_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, dict[str, float]]]:
@@ -31,18 +30,18 @@ def normalize_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, dict[str, 
 
 
 def build_regression_matrices(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
-    assert pd.Index(['month', 'customer_id', *STATES, *CONTROL]).isin(df.columns).all()
+    assert pd.Index(['month', 'customer_id', *settings.STATES, *settings.CONTROL]).isin(df.columns).all()
 
     df_sorted = df.sort_values(['customer_id', 'month'])
 
     is_last_month: pd.DataFrame = df_sorted['customer_id'] != df_sorted['customer_id'].shift(1)
 
-    x_all: np.ndarray = df_sorted[STATES].values
-    u_all: np.ndarray = df_sorted[CONTROL].values
+    x_all: np.ndarray = df_sorted[settings.STATES].values
+    u_all: np.ndarray = df_sorted[settings.CONTROL].values
 
     xu_all: np.ndarray = np.hstack((x_all, u_all))
 
-    x_next_all: pd.DataFrame = df_sorted[STATES].shift(-1).values
+    x_next_all: pd.DataFrame = df_sorted[settings.STATES].shift(-1).values
 
     valid_rows: np.ndarray = ~is_last_month.values
 
@@ -72,10 +71,10 @@ def identify_AB(X_in: np.ndarray, X_out: np.ndarray) -> tuple[np.ndarray, np.nda
 
 def identify_C(df: pd.DataFrame, A: np.ndarray, B: np.ndarray) -> np.ndarray:
     assert A.shape == (4, 4) and B.shape == (4, 1)
-    assert pd.Index([*STATES, *OBSERVABLE_OUTPUTS]).isin(df.columns).all()
+    assert pd.Index([*settings.STATES, *settings.OBSERVATIONS]).isin(df.columns).all()
 
-    X: np.ndarray = df[STATES].values
-    Y: np.ndarray = df[OBSERVABLE_OUTPUTS].values
+    X: np.ndarray = df[settings.STATES].values
+    Y: np.ndarray = df[settings.OBSERVATIONS].values
 
     C: np.ndarray = Y.T @ np.linalg.pinv(X.T)
 

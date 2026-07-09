@@ -23,5 +23,15 @@ class Settings:
     CSS_CUSTOMER: Path = GUI / "cliente" / "styles.css"
     CSS_BANK: Path = GUI / "banco" / "styles.css"
 
+    STATES: list[str] = ['outstanding_debt', 'income', 'utilization_rate', 'days_in_default']
+    CONTROL: list[str] = ['credit_limit']
+    OBSERVATIONS: list[str] = ['num_transactions', 'payment_amount']
+    RECOVERY_RATE: float = 0.30
+    MONTHLY_STATE_COLS: list[str] = [
+        'customer_id', 'month', 'income', 'credit_limit', 'utilization_rate',
+        'outstanding_debt', 'payment_amount', 'days_in_default',
+        'num_transactions', 'transaction_volatility', 'default_indicator'
+    ]
+
 
 settings = Settings()
