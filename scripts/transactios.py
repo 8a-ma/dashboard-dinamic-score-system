@@ -8,13 +8,7 @@ from pathlib import Path
 from settings.settings import settings
 
 
-# SEED: int = 42
-# N_CUSTOMERS:int = 500
-# MONTHS: int = 24
-
-# PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
-# OUTPUT_DIR: Path = PROJECT_ROOT / "db"
-OUTPUT_FILE: Path = settings.OUTPUT_DIR / "raw_transactions.csv"
+OUTPUT_FILE: Path = settings.DB_PATH / "raw_transactions.csv"
 
 
 def _clip(v: float, a: float, b: float) -> float:
@@ -325,8 +319,8 @@ def main() -> None:
     np.random.seed(settings.SEED)
     args: argparse.Namespace = parsear_args()
 
-    assert settings.OUTPUT_DIR.parent.exists()
-    os.makedirs(settings.OUTPUT_DIR, exist_ok=True)
+    assert settings.DB_PATH.parent.exists()
+    os.makedirs(settings.DB_PATH, exist_ok=True)
 
     if OUTPUT_FILE.exists() and not args.force:
         print(f"Ya existe {OUTPUT_FILE}. Usa --force para regenerar.")
