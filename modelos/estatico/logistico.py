@@ -74,7 +74,8 @@ def train_and_save(features_path: Path, model_path: Path, metrics_path: Path) ->
     assert not model_path.exists()
     assert features_path.exists()
 
-    df: pd.DataFrame = _load_features(features_path).dropna(subset=settings.FEATURE_COLUMNS)
+    df: pd.DataFrame = _load_features(features_path)
+    df[settings.FEATURE_COLUMNS] = df[settings.FEATURE_COLUMNS].fillna(0.0)
     
     train_df: pd.DataFrame
     test_df: pd.DataFrame
