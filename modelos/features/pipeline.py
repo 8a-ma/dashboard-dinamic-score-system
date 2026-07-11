@@ -126,7 +126,7 @@ def generar_features(input_path: Path, output_path: Path) -> pd.DataFrame:
     df = calcular_ratio_deuda_ingreso_ma(df)
     df = calcular_tendencia_utilizacion(df)
     df = calcular_volatilidad_pagos(df)
-    df = calcular_days_in_default_lag1(df)
+    # df = calcular_days_in_default_lag1(df)
  
     df.to_csv(output_path, index=False, encoding='utf-8')
  
