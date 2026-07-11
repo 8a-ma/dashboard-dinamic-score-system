@@ -67,6 +67,7 @@ def _simulate_customer_kalman(df: pd.DataFrame, A: np.ndarray, B: np.ndarray, C:
         x_hat, P = kalman.step(u_t, y_t)
         score: float = dynamic_score(x_hat, P, K, credit_limit_max_norm)
         limit: float = decide_credit_limit(K, x_hat, credit_limit_max_norm)
+        deuda_expuesta: float = min(float(row['outstanding_debt']), limit)
  
         rows.append({
             'customer_id': str(row['customer_id']), 
@@ -78,7 +79,7 @@ def _simulate_customer_kalman(df: pd.DataFrame, A: np.ndarray, B: np.ndarray, C:
             'p_trace': float(np.trace(P)), 
             'score_dinamico': score,
             'limit_recomendado': limit,
-            'loss': calculate_month_loss(float(row['outstanding_debt']), int(row['default_indicator'])),
+            'loss': calculate_month_loss(deuda_expuesta, int(row['default_indicator'])),
             'default_indicator': int(row['default_indicator'])
         })
  

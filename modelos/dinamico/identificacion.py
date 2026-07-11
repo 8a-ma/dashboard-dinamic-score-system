@@ -64,6 +64,10 @@ def identify_AB(X_in: np.ndarray, X_out: np.ndarray) -> tuple[np.ndarray, np.nda
     A = AB[:, :4]
     B = AB[:, 4:5]
 
+    eigenvalues: np.ndarray = np.abs(np.linalg.eigvals(A))
+    if (eigenvalues > 1.0).any():
+        warnings.warn(f"A inestable: eigenvalores {eigenvalues}. Kalman divergira.")
+
     assert A.shape == (4, 4)
     assert B.shape == (4, 1)
 

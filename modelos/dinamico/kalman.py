@@ -53,6 +53,7 @@ class FiltroKalman:
         if (min_eigenvalue := float(np.linalg.eigvals(P).min().real)) < 0:
             warnings.warn(f"Negative eigenvalue in covariance P ({min_eigenvalue:.6f}). Applying symmetrization.")
             P = (P + P.T) / 2.0
+            P = P + (abs(min_eigenvalue) + 1e-6) * np.eye(self.A.shape[0])
         
         return P
     
