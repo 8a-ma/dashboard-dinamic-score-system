@@ -256,7 +256,7 @@ def run_backtesting(features_path: Path, matrices_path: Path, model_path: Path, 
         assert output_json_path.exists()
  
     with open(output_json_path, 'r+') as f:
-        comparison: dict = f
+        comparison: dict = json.load(f)
     
     return comparison
 
