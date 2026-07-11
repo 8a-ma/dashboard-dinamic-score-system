@@ -49,33 +49,35 @@ def build_regression_matrices(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]
     X_out: np.ndarray = x_next_all[valid_rows]
 
     assert X_in.shape[0] == X_out.shape[0]
-    assert X_in.shape[1] == 5
+    assert X_in.shape[1] == 4
     assert not np.isnan(X_out).any()
 
     return X_in, X_out
 
 
 def identify_AB(X_in: np.ndarray, X_out: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    assert X_in.shape[1] == 5
+    assert X_in.shape[1] == 4
     assert X_in.shape[0] == X_out.shape[0]
 
     AB = X_out.T @ np.linalg.pinv(X_in.T)
 
-    A = AB[:, :4]
-    B = AB[:, 4:5]
+    A = AB[:, :3]
+    B = AB[:, 3:4]
+
+    print(A.shape)
 
     eigenvalues: np.ndarray = np.abs(np.linalg.eigvals(A))
     if (eigenvalues > 1.0).any():
         warnings.warn(f"A inestable: eigenvalores {eigenvalues}. Kalman divergira.")
 
-    assert A.shape == (4, 4)
-    assert B.shape == (4, 1)
+    assert A.shape == (3, 3)
+    assert B.shape == (3, 1)
 
     return A, B
 
 
 def identify_C(df: pd.DataFrame, A: np.ndarray, B: np.ndarray) -> np.ndarray:
-    assert A.shape == (4, 4) and B.shape == (4, 1)
+    assert A.shape == (3, 3) and B.shape == (3, 1)
     assert pd.Index([*settings.STATES, *settings.OBSERVATIONS]).isin(df.columns).all()
 
     X: np.ndarray = df[settings.STATES].values
@@ -83,17 +85,17 @@ def identify_C(df: pd.DataFrame, A: np.ndarray, B: np.ndarray) -> np.ndarray:
 
     C: np.ndarray = Y.T @ np.linalg.pinv(X.T)
 
-    assert C.shape == (2, 4)
+    assert C.shape == (2, 3)
 
     return C    
 
 
 def verify_mse(A: np.ndarray, B: np.ndarray, X_in: np.ndarray, X_out: np.ndarray) -> float:
-    assert A.shape == (4, 4) and B.shape == (4, 1)
+    assert A.shape == (3, 3) and B.shape == (3, 1)
     assert X_in.shape[0] == X_out.shape[0]
 
-    X_t: np.ndarray = X_in[:, :4]
-    U_t: np.ndarray = X_in[:, 4:5]
+    X_t: np.ndarray = X_in[:, :3]
+    U_t: np.ndarray = X_in[:, 3:4]
 
     X_next_pred: np.ndarray = X_t @ A.T + U_t @ B.T
 
@@ -106,7 +108,7 @@ def verify_mse(A: np.ndarray, B: np.ndarray, X_in: np.ndarray, X_out: np.ndarray
 
 
 def save_matrices(A: np.ndarray, B: np.ndarray, C: np.ndarray, scale_params: dict[str, dict[str, float]], path: Path) -> None:
-    assert A.shape == (4, 4) and B.shape == (4, 1) and C.shape == (2, 4)
+    assert A.shape == (3, 3) and B.shape == (3, 1) and C.shape == (2, 3)
     assert path.parent.exists()
 
     np.savez(path, A=A, B=B, C=C)
@@ -124,7 +126,7 @@ def load_matrices(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         B: np.ndarray = data["B"]
         C: np.ndarray = data["C"]
     
-    assert A.shape == (4, 4) and C.shape == (2, 4)
+    assert A.shape == (3, 3) and C.shape == (2, 3)
 
     return A, B, C
 
