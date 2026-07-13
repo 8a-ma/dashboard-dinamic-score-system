@@ -33,7 +33,6 @@ MarkupSafe==3.0.3
 matplotlib==3.11.0
 multidict==6.7.1
 narwhals==2.22.1
-nicegui==3.13.0
 numpy==2.5.0
 orjson==3.11.9
 packaging==26.2
