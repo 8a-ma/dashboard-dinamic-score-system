@@ -31,7 +31,7 @@ class FiltroKalman:
     
     def update(self, x_pred: np.ndarray, P_pred: np.ndarray, y_t: np.ndarray) -> tuple[np.ndarray, np.ndarray]:        
         assert y_t.shape == (settings.N_OBSERVATIONS, 1)
-        assert x_pred.shape == (settings.N_CONTROL, 1)
+        assert x_pred.shape == (settings.N_STATES, 1)
 
         if np.isnan(y_t).any():
             return x_pred, P_pred

@@ -317,14 +317,14 @@ def save_csv(df: pd.DataFrame, path: Path) -> None:
 def main() -> None:
     assert settings.SEED == 42
     np.random.seed(settings.SEED)
-    args: argparse.Namespace = parsear_args()
+    # args: argparse.Namespace = parsear_args()
 
     assert settings.DB_PATH.parent.exists()
     os.makedirs(settings.DB_PATH, exist_ok=True)
 
-    if OUTPUT_FILE.exists() and not args.force:
-        print(f"Ya existe {OUTPUT_FILE}. Usa --force para regenerar.")
-        sys.exit(0)
+    # if OUTPUT_FILE.exists() and not args.force:
+    #     print(f"Ya existe {OUTPUT_FILE}. Usa --force para regenerar.")
+    #     sys.exit(0)
 
     composicion: dict[str, int] = calulate_composition(settings.N_CUSTOMERS)
     tipos: list[str] = generate_customer_type(composicion)
