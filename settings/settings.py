@@ -25,8 +25,14 @@ class Settings:
     CSS_BANK: Path = GUI / "banco" / "styles.css"
 
     STATES: list[str] = ['outstanding_debt', 'income', 'utilization_rate']
+    N_STATES: int = len(STATES)
+
     CONTROL: list[str] = ['credit_limit']
+    N_CONTROL: int = len(CONTROL)
+
     OBSERVATIONS: list[str] = ['num_transactions', 'payment_amount']
+    N_OBSERVATIONS: int = len(OBSERVATIONS)
+
     RECOVERY_RATE: float = 0.30
     MONTHLY_STATE_COLS: list[str] = [
         'customer_id', 

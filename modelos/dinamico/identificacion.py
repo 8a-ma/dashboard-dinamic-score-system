@@ -18,19 +18,23 @@ def normalize_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, dict[str, 
 
     means: pd.Series = df[ALL_NUMERIC_COLS].mean()
     stds: pd.Series = df[ALL_NUMERIC_COLS].std(ddof=0)
+    safe_stds: pd.Series = stds.replace(0.0, 1.0)
 
-    df_norm[ALL_NUMERIC_COLS] = (df[ALL_NUMERIC_COLS] - means) / stds
+    df_norm[ALL_NUMERIC_COLS] = (df[ALL_NUMERIC_COLS] - means) / safe_stds
 
     scale_params = {
         col: {'mean': float(means[col]), 'std': float(stds[col])}
         for col in ALL_NUMERIC_COLS
     }
 
+    assert not df_norm[ALL_NUMERIC_COLS].isnull().any().any()
+
     return df_norm, scale_params
 
 
 def build_regression_matrices(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
     assert pd.Index(['month', 'customer_id', *settings.STATES, *settings.CONTROL]).isin(df.columns).all()
+    assert not df.empty
 
     df_sorted = df.sort_values(['customer_id', 'month'])
 
@@ -49,20 +53,20 @@ def build_regression_matrices(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]
     X_out: np.ndarray = x_next_all[valid_rows]
 
     assert X_in.shape[0] == X_out.shape[0]
-    assert X_in.shape[1] == 4
+    assert X_in.shape[1] == settings.N_STATES + settings.N_CONTROL
     assert not np.isnan(X_out).any()
 
     return X_in, X_out
 
 
 def identify_AB(X_in: np.ndarray, X_out: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    assert X_in.shape[1] == 4
+    assert X_in.shape[1] == settings.N_STATES + settings.N_CONTROL
     assert X_in.shape[0] == X_out.shape[0]
 
     AB = X_out.T @ np.linalg.pinv(X_in.T)
 
-    A = AB[:, :3]
-    B = AB[:, 3:4]
+    A: np.ndarray = AB[:, :settings.N_STATES]
+    B: np.ndarray = AB[:, settings.N_STATES:settings.N_STATES + settings.N_CONTROL]
 
     print(A.shape)
 
@@ -70,14 +74,15 @@ def identify_AB(X_in: np.ndarray, X_out: np.ndarray) -> tuple[np.ndarray, np.nda
     if (eigenvalues > 1.0).any():
         warnings.warn(f"A inestable: eigenvalores {eigenvalues}. Kalman divergira.")
 
-    assert A.shape == (3, 3)
-    assert B.shape == (3, 1)
+    assert A.shape == (settings.N_STATES, settings.N_STATES)
+    assert B.shape == (settings.N_STATES, settings.N_CONTROL)
 
     return A, B
 
 
 def identify_C(df: pd.DataFrame, A: np.ndarray, B: np.ndarray) -> np.ndarray:
-    assert A.shape == (3, 3) and B.shape == (3, 1)
+    assert A.shape == (settings.N_STATES, settings.N_STATES)
+    assert B.shape == (settings.N_STATES, settings.N_CONTROL)
     assert pd.Index([*settings.STATES, *settings.OBSERVATIONS]).isin(df.columns).all()
 
     X: np.ndarray = df[settings.STATES].values
@@ -85,17 +90,18 @@ def identify_C(df: pd.DataFrame, A: np.ndarray, B: np.ndarray) -> np.ndarray:
 
     C: np.ndarray = Y.T @ np.linalg.pinv(X.T)
 
-    assert C.shape == (2, 3)
+    assert C.shape == (settings.N_OBSERVATIONS, settings.N_STATES)
 
     return C    
 
 
 def verify_mse(A: np.ndarray, B: np.ndarray, X_in: np.ndarray, X_out: np.ndarray) -> float:
-    assert A.shape == (3, 3) and B.shape == (3, 1)
+    assert A.shape == (settings.N_STATES, settings.N_STATES)
+    assert B.shape == (settings.N_STATES, settings.N_CONTROL)
     assert X_in.shape[0] == X_out.shape[0]
 
-    X_t: np.ndarray = X_in[:, :3]
-    U_t: np.ndarray = X_in[:, 3:4]
+    X_t: np.ndarray = X_in[:, :settings.N_STATES]
+    U_t: np.ndarray = X_in[:, settings.N_STATES:settings.N_STATES + settings.N_CONTROL]
 
     X_next_pred: np.ndarray = X_t @ A.T + U_t @ B.T
 
@@ -108,7 +114,9 @@ def verify_mse(A: np.ndarray, B: np.ndarray, X_in: np.ndarray, X_out: np.ndarray
 
 
 def save_matrices(A: np.ndarray, B: np.ndarray, C: np.ndarray, scale_params: dict[str, dict[str, float]], path: Path) -> None:
-    assert A.shape == (3, 3) and B.shape == (3, 1) and C.shape == (2, 3)
+    assert A.shape == (settings.N_STATES, settings.N_STATES)
+    assert B.shape == (settings.N_STATES, settings.N_CONTROL)
+    assert C.shape == (settings.N_OBSERVATIONS, settings.N_STATES)
     assert path.parent.exists()
 
     np.savez(path, A=A, B=B, C=C)
@@ -126,7 +134,7 @@ def load_matrices(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         B: np.ndarray = data["B"]
         C: np.ndarray = data["C"]
     
-    assert A.shape == (3, 3) and C.shape == (2, 3)
+    assert A.shape == (settings.N_STATES, settings.N_STATES) and C.shape == (settings.N_OBSERVATIONS, settings.N_STATES)
 
     return A, B, C
 
