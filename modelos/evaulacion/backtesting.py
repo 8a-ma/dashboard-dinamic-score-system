@@ -56,13 +56,16 @@ def simulate_logistic_model(df_features: pd.DataFrame, model: Pipeline) -> pd.Da
 def _simulate_customer_kalman(df: pd.DataFrame, A: np.ndarray, B: np.ndarray, C: np.ndarray, K: np.ndarray, Q_k: np.ndarray, R_k: np.ndarray, scale_params: dict, credit_limit_max_norm: float) -> list[dict]:
     assert len(df) > 0
     
-    kalman: FiltroKalman = FiltroKalman(A, B, C, np.zeros((4, 1)), np.eye(4), Q_k, R_k)
+    kalman: FiltroKalman = FiltroKalman(A, B, C, np.zeros((settings.N_STATES, 1)), np.eye(settings.N_STATES), Q_k, R_k)
     rows: list[dict] = []
 
     for _, row in df.sort_values('month').iterrows():
-        u_t: np.ndarray = _normalize_vector(row, scale_params, [settings.CONTROL[0]]).reshape(1, 1)
+        u_t: np.ndarray = _normalize_vector(row, scale_params, settings.CONTROL).reshape(-1, 1)
         y_nan: bool = pd.isna(row.get('num_transactions')) or pd.isna(row.get('payment_amount'))
-        y_t: np.ndarray = np.full((2, 1), np.nan) if y_nan else _normalize_vector(row, scale_params, settings.OBSERVATIONS).reshape(2, 1)
+        y_t: np.ndarray = (
+            np.full((settings.N_OBSERVATIONS, 1), np.nan) if y_nan
+            else _normalize_vector(row, scale_params, settings.OBSERVATIONS).reshape(-1, 1)
+        )
  
         x_hat, P = kalman.step(u_t, y_t)
         score: float = dynamic_score(x_hat, P, K, credit_limit_max_norm)
@@ -70,13 +73,12 @@ def _simulate_customer_kalman(df: pd.DataFrame, A: np.ndarray, B: np.ndarray, C:
         deuda_expuesta: float = min(float(row['outstanding_debt']), limit)
  
         rows.append({
-            'customer_id': str(row['customer_id']), 
+            'customer_id': str(row['customer_id']),
             'month': int(row['month']),
             'x_hat_debt': float(x_hat[0, 0]),
             'x_hat_income': float(x_hat[1, 0]),
-            'x_hat_util': float(x_hat[2, 0]), 
-            'x_hat_days': float(x_hat[3, 0]),
-            'p_trace': float(np.trace(P)), 
+            'x_hat_util': float(x_hat[2, 0]),
+            'p_trace': float(np.trace(P)),
             'score_dinamico': score,
             'limit_recomendado': limit,
             'loss': calculate_month_loss(deuda_expuesta, int(row['default_indicator'])),
@@ -87,7 +89,7 @@ def _simulate_customer_kalman(df: pd.DataFrame, A: np.ndarray, B: np.ndarray, C:
 
 def simulate_dynamic_model(df: pd.DataFrame,A: np.ndarray, B: np.ndarray, C: np.ndarray, K: np.ndarray, Q_k: np.ndarray, R_k: np.ndarray, scale_params: dict) -> pd.DataFrame:
     assert 'customer_id' in df.columns and not df.empty
-    assert A.shape == (4, 4) and K.shape == (1, 4)
+    assert A.shape == (settings.N_STATES, settings.N_STATES) and K.shape == (1, settings.N_STATES)
  
     cl_std: float = scale_params[settings.CONTROL[0]]['std']
     cl_mean: float = scale_params[settings.CONTROL[0]]['mean']
@@ -125,10 +127,9 @@ def calculate_psi_series(scores_by_month: dict[int, np.ndarray]) -> dict[int, fl
     assert len(scores_by_month) > 0
  
     months: list[int] = sorted(scores_by_month.keys())
- 
-    assert len(months) >= 1
- 
     base_scores: np.ndarray = scores_by_month[months[0]]
+ 
+    assert len(base_scores) > 0
  
     return {month: calculate_psi(base_scores, scores_by_month[month]) for month in months}
 
@@ -202,8 +203,8 @@ def _insert_estimates_and_decisions(conn: sqlite3.Connection, dynamic_results: p
         insert_estimate_state(conn, {
             'customer_id': str(row['customer_id']), 'month': int(row['month']),
             'x_hat_debt': float(row['x_hat_debt']), 'x_hat_income': float(row['x_hat_income']),
-            'x_hat_util': float(row['x_hat_util']), 'x_hat_days': float(row['x_hat_days']),
-            'p_trace': float(row['p_trace']), 'score_dinamico': float(row['score_dinamico'])
+            'x_hat_util': float(row['x_hat_util']), 'p_trace': float(row['p_trace']),
+            'score_dinamico': float(row['score_dinamico'])
         })
         insert_decision(conn, {
             'customer_id': str(row['customer_id']), 'month': int(row['month']),
@@ -222,14 +223,13 @@ def populate_sqlite(conn: sqlite3.Connection, dynamic_results: pd.DataFrame, log
 
 def run_backtesting(features_path: Path, matrices_path: Path, model_path: Path, output_json_path: Path, conn: sqlite3.Connection) -> dict:
     if not model_path.exists():
-        raise FileNotFoundError(f"[Fase 3] Modelo no encontrado: {model_path}")
+        raise FileNotFoundError(f"Modelo no encontrado: {model_path}")
     if not matrices_path.exists():
-        raise FileNotFoundError(f"[Fase 3] Matrices no encontradas: {matrices_path}")
+        raise FileNotFoundError(f"Matrices no encontradas: {matrices_path}")
     if not features_path.exists():
-        raise FileNotFoundError(f"[Fase 3] Features no encontradas: {features_path}")
+        raise FileNotFoundError(f"Features no encontradas: {features_path}")
     
     if not output_json_path.exists():
- 
         assert output_json_path.suffix == '.json'
     
         model: Pipeline = load_model(model_path)
@@ -242,8 +242,9 @@ def run_backtesting(features_path: Path, matrices_path: Path, model_path: Path, 
     
         Q_lqr, R_lqr = default_cost_matrices()
         K: np.ndarray = calculate_lqr_gain(A, B, Q_lqr, R_lqr)
-        Q_k: np.ndarray = np.diag([0.01, 0.01, 0.01, 0.01])
-        R_k: np.ndarray = np.diag([0.1, 0.1])
+
+        Q_k: np.ndarray = np.eye(settings.N_STATES) * 0.01
+        R_k: np.ndarray = np.eye(settings.N_OBSERVATIONS) * 0.1
     
         df_features: pd.DataFrame = pd.read_csv(features_path)
     

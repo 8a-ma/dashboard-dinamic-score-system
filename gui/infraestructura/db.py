@@ -40,7 +40,6 @@ def inicializar_db(path: Path) -> sqlite3.Connection:
             x_hat_debt     REAL,
             x_hat_income   REAL,
             x_hat_util     REAL,
-            x_hat_days     REAL,
             p_trace        REAL,
             score_dinamico REAL,
             PRIMARY KEY (customer_id, month)
