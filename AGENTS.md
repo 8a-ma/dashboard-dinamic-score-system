@@ -193,7 +193,7 @@ Requisitos de la capa de visualización e interacción con el usuario de negocio
 
 | ID | Patrón EARS | Enunciado del Requisito (Requirement Statement) | Agente / Módulo Responsable | Método de Validación |
 | :--- | :---: | :--- | :---: | :--- |
-| **EARS-F6-01** | Ubiquitous | El dashboard interactivo de monitoreo y control **SHALL** implementarse utilizando Streamlit (Python 3.12) como interfaz web unificada de presentación. | Ingeniero de Software / GUI | Ejecución y renderizado correcto de la app Streamlit |l |
+| **EARS-F6-01** | Ubiquitous | El dashboard interactivo de monitoreo y control **SHALL** implementarse utilizando Streamlit (Python 3.12) como interfaz web unificada de presentación. | Ingeniero de Software / GUI | Ejecución y renderizado correcto de la app Streamlit |bl |
 | **EARS-F6-03** | Ubiquitous | El dashboard **SHALL** proporcionar una pestaña de *Análisis Descriptivo y Diagnóstico* para evaluar un dataframe completamente nuevo (almacenado en RAM), desplegando resúmenes estadísticos (distribución, media, varianza) y alertas de diagnóstico (correlaciones extremas, valores atípicos y drift de segmentos). | Ingeniero de Software / Módulo EDA | Pruebas de carga de dataframes sintéticos alternativos en RAM |
 | **EARS-F6-04** | Ubiquitous | El dashboard **SHALL** renderizar una pestaña para el *Modelo Estático* que proyecte su performance predictiva histórica (curva AUC-ROC, gráfico de estadística KS, coeficiente de Gini y PSI) y un gráfico de dispersión de asignación de límites de crédito. | Ingeniero de Software / Módulo Estático | Validación visual del pipeline de evaluación estática |
 | **EARS-F6-05** | Ubiquitous | El dashboard **SHALL** renderizar una pestaña interactiva para el *Modelo Dinámico* que grafique la convergencia temporal de los estados estimados por el filtro de Kalman ($\hat{x}_c = [deuda, ingreso, utilización]^T$) versus sus valores reales, junto al perfil histórico de las acciones de control de límite de crédito ($u_b$). | Ingeniero de Control / Módulo Dinámico | Verificación visual de simulación de estados y límites |
@@ -223,7 +223,6 @@ Requisitos de la capa de visualización e interacción con el usuario de negocio
 ## Preferencia de Código:
 
 - Usar el enfoque DDD (Domain-Driven Design).
-- Hojas de estilo globales/locales, inyectando archivos CSS personalizados para clases globales según cada parte (cliente y banco). Cada parte (cliente y banco) deben de tener su propia carpeta donde estarían los archivos CSS personalizados, donde al mismo nivel que esas carpetas habría un CSS global.
 - Usar buenas prácitcas en Streamlit
 - Cualquier función no deben superar las 60 líneas.
 - Se debe de declarar siempre el tipo de cada variable
