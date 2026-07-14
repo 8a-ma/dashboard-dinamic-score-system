@@ -261,8 +261,12 @@ Requisitos de la capa de visualización e interacción con el usuario de negocio
     - Cálculo de métricas: Gini, KS, pérdida esperada de cartera, estabilidad del score en el tiempo (PSI).
 
 5. Fase 5 — Revisión de código:
-    - Se revisara el código de las fases anteriores con el fin de optimizarlo y de mejorarlo
-    - Se aplicaran los patrones de diseño de software donde se pueda (por ejemplo en la creación del raw de clientes, se puede hacer una clase Cliente usando el patrón builder)
+    - Se revisara el código de las fases anteriores con el fin de optimizarlo y de mejorarlo.
+    - Se aplicaran los patrones de diseño de software donde corresponda (por ejemplo: en la creación del raw de clientes, se puede hacer una clase Cliente usando el patrón builder).
+    - Los patrones de diseño deben corresponder al problema que se esta resolviendo en el código actual.
+    - La optimización debe estar enfocada en evitar el overhead
+    - Se debe de implementar logs en el código, siguiendo la estructura canonica ([TIMESTAMP] | [LEVEL] | [SERVICE / MODULE] | [TRACE ID] | MESSAGE)
+    - La configuración del log se hace instancia una sola vez. Las demás clases y funciones toman esa instancia y llaman al método que corresponda
 
 6. Fase 6 — Streamlit:
     - Streamlit: dashboard de análisis de datos de un nuevo dataframe (que se guardara en memoria RAM).
