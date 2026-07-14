@@ -199,7 +199,12 @@ Las metodologías para evaluar ambos modelos deben ser las mismas, si no se pued
 4. Fase 4 — Comparación y validación:
     - Comparar con scorecard estático en simulación: ¿el modelo dinámico reduce pérdidas en backtesting?
     - Cálculo de métricas: Gini, KS, pérdida esperada de cartera, estabilidad del score en el tiempo (PSI).
-5. Fase 5 — Streamlit:
+
+5. Fase 5 — Revisión de código:
+    - Se revisara el código de las fases anteriores con el fin de optimizarlo y de mejorarlo
+    - Se aplicaran los patrones de diseño de software donde se pueda (por ejemplo en la creación del raw de clientes, se puede hacer una clase Cliente usando el patrón builder)
+
+6. Fase 6 — Streamlit:
     - Streamlit: dashboard de análisis de datos de un nuevo dataframe (que se guardara en memoria RAM).
     - Streamlit: dashboard donde el modelo estático evaluara el dataframe del punto anterior.
     - Streamlit: dashboard donde el modelo dinámico evaluara el dataframe guardado en memoria RAM.
