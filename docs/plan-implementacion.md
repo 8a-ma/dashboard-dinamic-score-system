@@ -11,12 +11,13 @@
 5. [Fase 0 — Bootstrapping del proyecto](#fase-0--bootstrapping-del-proyecto)
 6. [Fase 1 — Dataset y features dinámicos](#fase-1--dataset-y-features-dinámicos)
 7. [Fase 2 — Modelo dinámico (Kalman + LQR)](#fase-2--modelo-dinámico-kalman--lqr)
-8. [Fase 3 — Backtesting y comparación](#fase-3--backtesting-y-comparación)
-9. [Fase 4 — Interfaz gráfica NiceGUI](#fase-4--interfaz-gráfica-nicegui)
-10. [Infraestructura SQLite y repositorios](#infraestructura-sqlite-y-repositorios)
-11. [Tests pytest](#tests-pytest)
-12. [Mapa de dependencias entre artefactos](#mapa-de-dependencias-entre-artefactos)
-13. [Criterios de aceptación globales](#criterios-de-aceptación-globales)
+8. [Infraestructura SQLite y repositorios](#infraestructura-sqlite-y-repositorios)
+9. [Fase 3 — Backtesting y comparación](#fase-3--backtesting-y-comparación)
+10. [Fase 4 — Revisión de código, patrones de diseño y logging](#fase-4--revisión-de-código-patrones-de-diseño-y-logging)
+11. [Fase 5 — Interfaz gráfica Streamlit](#fase-5--interfaz-gráfica-streamlit)
+12. [Tests pytest](#tests-pytest)
+13. [Mapa de dependencias entre artefactos](#mapa-de-dependencias-entre-artefactos)
+14. [Criterios de aceptación globales](#criterios-de-aceptación-globales)
 
 ---
 
@@ -24,12 +25,28 @@
 
 El sistema es una **aplicación monolítica Python 3.12** que construye un motor de scoring crediticio dinámico. En lugar de producir probabilidades estáticas, modela al cliente como un sistema dinámico con retroalimentación (banco → cliente → banco), estimando estado con Kalman y optimizando decisiones con LQR.
 
+La interfaz gráfica es **Streamlit** con cuatro pestañas evaluando un **dataframe de evaluación nuevo, almacenado en RAM** (`st.session_state`), generado con semilla distinta a la de entrenamiento y transformado con el mismo pipeline de features.
+
+### Flujo macro del sistema
+
+```
+Fase entrenamiento (offline, una vez):
+  Generar datos sintéticos (SEED=42) → Feature engineering →
+  Entrenar modelo logístico → Identificar matrices A, B, C →
+  Backtesting → Poblar SQLite → Guardar JSON de comparación
+
+Fase evaluación (Streamlit, en tiempo de ejecución):
+  Generar dataset de evaluación (SEED=43) → Aplicar mismo pipeline →
+  Cargar en st.session_state → 4 pestañas evalúan ambos modelos
+```
+
 ### Componentes macro
 
 | Componente | Responsabilidad |
 |---|---|
-| `scripts/transacciones.py` | Generación de datos sintéticos (500 clientes × 24 meses) |
-| `modelos/features/pipeline.py` | Feature engineering temporal |
+| `scripts/transacciones.py` | Generación de datos sintéticos via `CustomerDirector` + `CustomerBuilder` |
+| `modelos/dominio/` | Entidades de dominio: `CustomerBuilder`, `CustomerDirector`, arquetipos |
+| `modelos/features/pipeline.py` | Feature engineering temporal (reutilizado en training y evaluación) |
 | `modelos/estatico/logistico.py` | Baseline logístico, serialización en `.pkl` |
 | `modelos/dinamico/identificacion.py` | Estimación de matrices A, B, C del sistema |
 | `modelos/dinamico/kalman.py` | Filtro de Kalman discreto |
@@ -37,10 +54,22 @@ El sistema es una **aplicación monolítica Python 3.12** que construye un motor
 | `modelos/evaluacion/backtesting.py` | Simulación mes a mes, comparación de modelos |
 | `gui/infraestructura/db.py` | Inicialización SQLite, tablas |
 | `gui/infraestructura/repositorios/` | Repositorios DDD (Customer, Decision, Estado) |
-| `gui/cliente/` | Dashboard del cliente (NiceGUI) |
-| `gui/banco/` | Dashboard del banco (NiceGUI) |
-| `tests/` | Suite pytest |
+| `gui/paginas/` | Cuatro pestañas Streamlit |
+| `gui/componentes/` | Componentes reutilizables de visualización |
+| `gui/app.py` | Punto de entrada Streamlit: carga modelos, genera eval_df, renderiza pestañas |
+| `utils/logger.py` | Singleton de logging con formato canónico |
+| `utils/file_helpers.py` | Utilidades genéricas de I/O |
 | `settings/settings.py` | Clase con configuraciones globales para constantes |
+
+### Vector de estado
+
+El estado del cliente es **ℝ³**: `x_c = [outstanding_debt, income, utilization_rate]ᵀ`.
+
+| Símbolo | Dimensión | Variables |
+|---|---|---|
+| `x_c` | ℝ³ | `outstanding_debt`, `income`, `utilization_rate` |
+| `u_t` | ℝ¹ | `credit_limit` |
+| `y_t` | ℝ² | `num_transactions`, `payment_amount` |
 
 ---
 
@@ -52,13 +81,17 @@ Estas reglas aplican a **cada función de cada archivo** y deben verificarse ant
 |---|---|
 | **Longitud** | Ninguna función supera 60 líneas |
 | **Tipado explícito** | Toda variable y parámetro lleva anotación de tipo |
-| **Aserciones** | Mínimo 2 aserciones por función (precondiciones/invariantes) |
+| **Aserciones** | Mínimo 2 aserciones por función (precondiciones / invariantes) |
 | **Legibilidad** | Código autoexplicativo; mínimos comentarios inline |
-| **Unidades CSS** | Solo `rem`, base `font-size: 10px` |
-| **CSS Modules** | Clases prefijadas por componente; sin colisiones |
-| **Seed fijo** | `SEED = 42` antes de cualquier `numpy.random` |
+| **Paradigma** | POO > funcional > procedural |
+| **DRY** | Sin duplicación; reutilizar implementaciones existentes |
+| **DDD** | Capas dominio / aplicación / infraestructura desacopladas |
+| **Seed fijo** | `SEED = 42` para entrenamiento, `SEED = 43` para evaluación |
 | **Singleton .pkl** | Modelo logístico entrenado una sola vez; reutilizado en adelante |
-| **FileNotFoundError** | Si falta cualquier dependencia de fase, lanzar con ruta y fase |
+| **FileNotFoundError** | Si falta dependencia de fase, lanzar con ruta y fase |
+| **Logging** | Toda función relevante registra entrada / salida / errores mediante `utils/logger.py` |
+| **Builder obligatorio** | Creación de clientes y trayectorias **siempre** via `CustomerBuilder` + `CustomerDirector` |
+| **Streamlit state** | El dataframe de evaluación vive en `st.session_state['eval_df']`; nunca se recalcula si ya existe |
 
 ---
 
@@ -67,16 +100,26 @@ Estas reglas aplican a **cada función de cada archivo** y deben verificarse ant
 ```
 dashboard-dinamic-score-system/
 ├── AGENTS.md
+├── main.py                             # Punto de entrada: streamlit run main.py
+├── requirements.txt
 ├── db/
-│   ├── credito.db                  # SQLite principal
-│   ├── raw_transactions.csv        # Salida Fase 1.1
-│   ├── features_dinamicos.csv      # Salida Fase 1.2
-│   ├── matrices_sistema.npz        # Salida Fase 2.1
-│   ├── modelo_logistico.pkl        # Salida Fase 1.3
-│   ├── metricas_baseline.json      # Salida Fase 1.3
-│   └── comparacion_modelos.json    # Salida Fase 3
+│   ├── credito.db
+│   ├── raw_transactions.csv            # Training SEED=42
+│   ├── eval_transactions.csv           # Evaluation SEED=43
+│   ├── features_dinamicos.csv          # Training features
+│   ├── eval_features.csv               # Evaluation features (en disco, cargado en RAM)
+│   ├── matrices_sistema.npz
+│   ├── matrices_sistema.json           # Scale params de normalización
+│   ├── modelo_logistico.pkl
+│   ├── metricas_baseline.json
+│   └── comparacion_modelos.json
 ├── modelos/
 │   ├── __init__.py
+│   ├── dominio/
+│   │   ├── __init__.py
+│   │   ├── arquetipos.py               # Constantes y configuración por arquetipo
+│   │   ├── customer_builder.py         # Patrón Builder: construye trayectoria de 1 cliente
+│   │   └── customer_director.py        # Director: orquesta composición de 500 clientes
 │   ├── features/
 │   │   ├── __init__.py
 │   │   └── pipeline.py
@@ -92,7 +135,8 @@ dashboard-dinamic-score-system/
 │       ├── __init__.py
 │       └── backtesting.py
 ├── gui/
-│   ├── global.css
+│   ├── __init__.py
+│   ├── app.py                          # Bootstrap de Streamlit, carga recursos, renderiza tabs
 │   ├── infraestructura/
 │   │   ├── __init__.py
 │   │   ├── db.py
@@ -101,58 +145,51 @@ dashboard-dinamic-score-system/
 │   │       ├── cliente_repo.py
 │   │       ├── decision_repo.py
 │   │       └── estado_repo.py
-│   ├── cliente/
-│   │   ├── styles.css
-│   │   ├── componentes/
-│   │   │   ├── __init__.py
-│   │   │   ├── score_gauge.py
-│   │   │   ├── trayectoria_chart.py
-│   │   │   ├── tabla_transacciones.py
-│   │   │   └── selector_cliente.py
-│   │   └── paginas/
-│   │       ├── __init__.py
-│   │       └── dashboard_cliente.py
-│   └── banco/
-│       ├── styles.css
-│       ├── componentes/
-│       │   ├── __init__.py
-│       │   ├── panel_metricas.py
-│       │   ├── autovalores_plot.py
-│       │   ├── psi_chart.py
-│       │   ├── features_agregados.py
-│       │   ├── simulacion_contrafactual.py
-│       │   └── filtro_arquetipo.py
-│       └── paginas/
-│           ├── __init__.py
-│           └── dashboard_banco.py
-├── scripts/
-│   └── transacciones.py
+│   ├── paginas/
+│   │   ├── __init__.py
+│   │   ├── analisis_descriptivo.py
+│   │   ├── modelo_estatico.py
+│   │   ├── modelo_dinamico.py
+│   │   └── comparacion.py
+│   └── componentes/
+│       ├── __init__.py
+│       ├── metricas_card.py
+│       ├── graficos_roc.py
+│       ├── graficos_kalman.py
+│       ├── graficos_comparacion.py
+│       └── shock_simulator.py
 ├── settings/
 │   └── settings.py
+├── utils/
+│   ├── __init__.py
+│   ├── logger.py                       # Singleton de logging con formato canónico
+│   ├── file_helpers.py                 # I/O genérico
+│   └── transacciones.py                # CLI wrapper: usa CustomerDirector
 ├── tests/
 │   ├── conftest.py
 │   ├── test_features.py
 │   ├── test_kalman.py
 │   ├── test_controlador.py
 │   ├── test_logistico.py
+│   ├── test_builder.py
 │   └── test_integracion.py
 └── docs/
-    ├── plan-implementacion.md      ← este archivo
+    ├── plan-implementacion.md
     └── tareas.md
 ```
+
+> **Nota de corrección:** El directorio `modelos/evaulacion/` (con typo) debe ser renombrado a `modelos/evaluacion/` durante la Fase 4. Todos los imports deben actualizarse en consecuencia.
 
 ---
 
 ## 4. Orden de implementación global
 
-La secuencia respeta el grafo de dependencias entre artefactos de salida:
-
 ```
 Fase 0 (setup)
     ↓
-Fase 1.1 (transacciones.py → raw_transactions.csv)
+Fase 1.1 (CustomerBuilder + CustomerDirector → raw_transactions.csv + eval_transactions.csv)
     ↓
-Fase 1.2 (pipeline.py → features_dinamicos.csv)
+Fase 1.2 (pipeline.py → features_dinamicos.csv + eval_features.csv)
     ↓
 Fase 1.3 (logistico.py → modelo_logistico.pkl + metricas_baseline.json)
     ↓
@@ -166,664 +203,691 @@ Infraestructura SQLite (db.py + repositorios)
     ↓
 Fase 3 (backtesting.py → comparacion_modelos.json + poblar credito.db)
     ↓
-Fase 4 (GUI NiceGUI — cliente y banco)
+Fase 4 (revisión de código: Builder, logging, DRY, corrección typo evaluacion)
     ↓
-Tests (conftest → unit tests → test integración)
+Fase 5 (Streamlit: gui/app.py + 4 páginas + componentes)
+    ↓
+Tests (conftest → unit tests → test_builder → test integración)
 ```
+
+> Las Fases 0–3 e Infraestructura están **semi-completadas** (tienen código inicial, pero requiere mejorarlos siguiendo el plan de implementación). El trabajo pendiente comienza en Fase 0.
 
 ---
 
 ## Fase 0 — Bootstrapping del proyecto
 
-### Objetivo
-Dejar la estructura de carpetas, dependencias y configuración base lista para que las fases siguientes puedan arrancar.
+**Estado:** ✅ Completada
 
-### Tareas
+### Tareas completadas
 
-#### T0.1 — Estructura de directorios
-- Crear todos los directorios del árbol de archivos objetivo.
-- Crear archivos `__init__.py` vacíos en todos los paquetes Python.
-- Crear archivos CSS vacíos en sus rutas finales (`global.css`, `cliente/styles.css`, `banco/styles.css`).
+- T0.1 Estructura de directorios y `__init__.py` vacíos.
+- T0.2 `requirements.txt` con dependencias fijadas.
+- T0.3 `docs/tareas.md` y `docs/plan-implementacion.md`.
+- T0.4 Validación Python 3.12, instalación de dependencias.
 
-#### T0.2 — Archivo de dependencias
-- Crear `requirements.txt` con versiones fijadas:
-  ```
-  numpy>=1.26
-  pandas>=2.2
-  scikit-learn>=1.4
-  python-control>=0.9
-  nicegui>=1.4
-  scipy>=1.12
-  ```
-- Verificar que `python-control` incluye `dare` (ecuación de Riccati discreta).
+### Pendiente de Fase 0 (añadido)
 
-#### T0.3 — Documentación inicial
-- Crear `docs/tareas.md` con tabla de tareas y columna de estado (`pendiente / en curso / completado`).
-- Confirmar que `docs/plan-implementacion.md` (este archivo) está en su ruta.
+#### T0.5 — Crear `utils/` y `modelos/dominio/`
+- Crear directorios `utils/` y `modelos/dominio/`.
+- Crear `utils/__init__.py`, `modelos/dominio/__init__.py`.
+- Crear archivos vacíos: `utils/logger.py`, `utils/file_helpers.py`, `modelos/dominio/arquetipos.py`, `modelos/dominio/customer_builder.py`, `modelos/dominio/customer_director.py`.
 
-#### T0.4 — Validación mínima
-- Ejecutar `python --version` → confirmar 3.12.
-- Ejecutar `pip install -r requirements.txt`.
-- Confirmar que `import nicegui`, `import control`, `import sklearn` no lanzan error.
+#### T0.6 — Crear estructura `gui/paginas/` y `gui/componentes/`
+- Crear `gui/paginas/` con `__init__.py` y archivos vacíos de las cuatro páginas.
+- Crear `gui/componentes/` con `__init__.py` y archivos vacíos de cada componente.
+- Crear `gui/app.py` vacío.
+- Crear `main.py` vacío en raíz.
+
+#### T0.7 — Actualizar `requirements.txt`
+- Agregar `streamlit>=1.35` si no está presente.
+- Verificar que `nicegui` puede ser eliminado si ya no se utiliza.
 
 ---
 
 ## Fase 1 — Dataset y features dinámicos
 
+### 1.0 — Dominio: Builder de clientes
+
+**Archivos:** `modelos/dominio/arquetipos.py`, `modelos/dominio/customer_builder.py`, `modelos/dominio/customer_director.py`
+
+> Esta fase refactoriza la lógica de generación de datos de `scripts/transacciones.py` hacia el patrón Builder, cumpliendo EARS-F5-01.
+
+#### `modelos/dominio/arquetipos.py`
+
+Define la configuración de comportamiento de cada arquetipo como constantes o dataclasses:
+
+**`ARCHETYPE_PARAMS: dict[str, dict]`**
+- Diccionario con claves `good`, `recurrent`, `over`, `fraud`, `low`.
+- Cada entrada contiene los parámetros de distribución usados en la generación de filas (utilization media/std, default_prob, income_shock_prob, etc.).
+- Precondición: `assert set(ARCHETYPE_PARAMS.keys()) == {"good", "recurrent", "over", "fraud", "low"}`.
+
+**`ARCHETYPE_COMPOSITION: dict[str, float]`**
+- Proporciones: `good=0.40`, `recurrent=0.25`, `over=0.20`, `fraud=0.05`, `low=0.10`.
+- Precondición: `assert abs(sum(ARCHETYPE_COMPOSITION.values()) - 1.0) < 1e-9`.
+
+#### `modelos/dominio/customer_builder.py` — clase `CustomerBuilder`
+
+Construye la trayectoria mensual completa de **un único cliente** (24 filas).
+
+**`__init__(self)`**
+- Inicializa atributos internos: `_customer_id`, `_archetype`, `_base_income`, `_credit_limit` (todos `None`).
+- Aserciones: objeto creado en estado no construido.
+
+**`with_customer_id(self, customer_id: str) -> 'CustomerBuilder'`**
+- Precondición: `assert customer_id.startswith('C')`.
+
+**`with_archetype(self, archetype: str) -> 'CustomerBuilder'`**
+- Precondición: `assert archetype in ARCHETYPE_PARAMS`.
+
+**`with_base_income(self, income: float) -> 'CustomerBuilder'`**
+- Precondición: `assert income > 0`.
+
+**`with_credit_limit(self, limit: float) -> 'CustomerBuilder'`**
+- Precondición: `assert limit > 0`.
+
+**`build(self) -> list[dict]`**
+- Verifica que los 4 atributos obligatorios están seteados.
+- Delega la generación mes a mes a métodos privados `_build_month_<archetype>(month, ...)`.
+- Retorna lista de 24 dicts, uno por mes.
+- Postcondición: `assert len(resultado) == settings.MONTHS`.
+- Postcondición: `assert all('customer_id' in r for r in resultado)`.
+
+**Métodos privados `_build_month_good`, `_build_month_recurrent`, `_build_month_over`, `_build_month_fraud`, `_build_month_low`**
+- Encapsulan la lógica de generación de filas del script actual.
+- Cada uno acepta `(self, month: int, current_limit: float) -> tuple[dict, float]` (fila + nuevo límite).
+- Deben incorporar los shocks exógenos (1–5% probabilidad) y drift temporal definidos en AGENTS.md.
+
+#### `modelos/dominio/customer_director.py` — clase `CustomerDirector`
+
+Orquesta la generación de la cartera completa usando `CustomerBuilder`.
+
+**`__init__(self, builder: CustomerBuilder)`**
+- Precondición: `assert isinstance(builder, CustomerBuilder)`.
+- Guarda referencia al builder.
+
+**`_calcular_composicion(self, n: int) -> dict[str, int]`**
+- Calcula cantidad de clientes por arquetipo según `ARCHETYPE_COMPOSITION`.
+- Precondición: `assert n == settings.N_CUSTOMERS`.
+- Postcondición: `assert sum(composicion.values()) == n`.
+
+**`construir_dataset(self, seed: int) -> pd.DataFrame`**
+- Fija `np.random.seed(seed)`.
+- Mezcla lista de arquetipos según composición.
+- Itera sobre 500 clientes: asigna ID, income aleatorio, credit_limit; llama `builder.with_*(...).build()`.
+- Apila resultados en DataFrame.
+- Precondición: `assert seed > 0`.
+- Postcondición: `assert len(df) == settings.N_CUSTOMERS * settings.MONTHS`.
+
+---
+
 ### 1.1 — Generación de datos sintéticos
 
-**Archivo:** `scripts/transacciones.py`  
-**Salida:** `db/raw_transactions.csv`  
-**EARS:** D01–D05
+**Archivo:** `scripts/transacciones.py`
+**Salidas:** `db/raw_transactions.csv` (SEED=42), `db/eval_transactions.csv` (SEED=43)
 
-#### Descripción funcional
-El script ya existe (proporcionado). Genera 500 clientes × 24 meses con 5 arquetipos (`good`, `recurrent`, `over`, `fraud`, `low`) según las proporciones definidas. Cada fila es un registro mensual con: `customer_id`, `month`, `income`, `credit_limit`, `utilization_rate`, `outstanding_debt`, `payment_amount`, `days_in_default`, `num_transactions`, `transaction_volatility`, `default_indicator`.
+**Estado:** Parcialmente completada (lógica existente). Pendiente: refactorizar para usar `CustomerDirector`, generar dataset de evaluación.
 
-#### Tareas de implementación
+#### T1.1.1 — Refactorizar `scripts/transacciones.py` para usar `CustomerDirector`
 
-**T1.1.1 — Revisar y consolidar el script existente**
-- Verificar que el script ya cumpla D01, D02, D05 (500 clientes, 5 arquetipos, `SEED=42`).
-- Añadir flag `--force` en `argparse`: si `db/raw_transactions.csv` ya existe y no se pasa `--force`, el script imprime mensaje y termina sin regenerar (D04).
-- Confirmar encoding UTF-8 en `to_csv` (ya presente).
+- Eliminar funciones `_row_good`, `_row_recurrent`, etc. del script; moverlas a `CustomerBuilder`.
+- El script queda como wrapper CLI que:
+  1. Parsea args: `--force`, `--seed` (default=42), `--output` (default=`settings.RAW_TRANSACTIONS_PATH`).
+  2. Instancia `CustomerBuilder` + `CustomerDirector`.
+  3. Llama `director.construir_dataset(seed=args.seed)`.
+  4. Guarda CSV con `save_csv(df, path)`.
+- Si el CSV ya existe y no se pasa `--force`, imprime mensaje y termina.
 
-**T1.1.2 — Añadir aserciones al script**
-- Al inicio de la función generadora: `assert N_CUSTOMERS == 500`.
-- Tras generar `df`: `assert len(df) == 500 * 24` y `assert set(df['customer_id'].str[0]) == {'C'}`.
+#### T1.1.2 — Generar dataset de evaluación
 
-**T1.1.3 — Verificación de ejecución**
-- Ejecutar el script y confirmar que `db/raw_transactions.csv` aparece con 12 000 filas (500 × 24).
-- Verificar distribución de arquetipos en el CSV: `good≈200`, `recurrent≈125`, `over≈100`, `fraud≈25`, `low≈50`.
+- Llamada adicional con `seed=43` → `db/eval_transactions.csv`.
+- Puede hacerse desde `main.py` o añadirse como segunda ejecución del script.
+- El dataset de evaluación representa **clientes nuevos**, no vistos en entrenamiento.
+
+#### T1.1.3 — Verificación
+
+- `db/raw_transactions.csv`: 12 000 filas, columnas correctas.
+- `db/eval_transactions.csv`: 12 000 filas, misma estructura.
 
 ---
 
 ### 1.2 — Feature Engineering Dinámico
 
-**Archivo:** `modelos/features/pipeline.py`  
-**Salida:** `db/features_dinamicos.csv`  
-**EARS:** F01–F06
+**Archivo:** `modelos/features/pipeline.py`
+**Salidas:** `db/features_dinamicos.csv`, `db/eval_features.csv`
 
-#### Descripción funcional
-Toma `raw_transactions.csv`, computa tres features temporales sobre ventanas móviles y exporta el dataset enriquecido. `customer_id` y `month` nunca se modifican (índice compuesto).
+**Estado:** ✅ Completada para training. Pendiente: `generar_features` debe ser invocada también sobre `eval_transactions.csv`.
 
-#### Funciones a implementar
+#### T1.2.1 — Generar eval features
 
-**`imputar_income(df: pd.DataFrame) -> pd.DataFrame`**
-- Precondición: `assert 'income' in df.columns`.
-- Por cliente, rellenar NaN de `income` con la media de los 3 meses previos del mismo cliente.
-- Si no hay meses previos disponibles, usar `ffill` y luego `bfill` como fallback.
-- Postcondición: `assert df['income'].isna().sum() == 0` (o documentar casos irreducibles).
-
-**`calcular_ratio_deuda_ingreso_ma(df: pd.DataFrame) -> pd.DataFrame`**
-- Precondición: `assert 'outstanding_debt' in df.columns and 'income' in df.columns`.
-- Por cliente ordenado por `month`, computar `ratio_raw = outstanding_debt / income`.
-- Media móvil de 3 meses (`min_periods=1`).
-- Asignar a columna `ratio_deuda_ingreso_ma`.
-- Postcondición: resultado ≥ 0 en toda la columna (después de imputación de income).
-
-**`calcular_tendencia_utilizacion(df: pd.DataFrame) -> pd.DataFrame`**
-- Precondición: `assert 'utilization_rate' in df.columns`.
-- Por cliente, para cada `month`, calcular pendiente de regresión lineal de `utilization_rate` sobre los últimos 6 meses disponibles (ventana deslizante).
-- Si hay menos de 2 puntos, pendiente = 0.0.
-- Asignar a columna `tendencia_utilizacion`.
-
-**`calcular_volatilidad_pagos(df: pd.DataFrame) -> pd.DataFrame`**
-- Precondición: `assert 'payment_amount' in df.columns`.
-- Por cliente, desviación estándar móvil de 3 meses de `payment_amount` (`min_periods=1`, `std`).
-- Asignar a columna `volatilidad_pagos`.
-
-**`generar_features(ruta_entrada: Path, ruta_salida: Path) -> pd.DataFrame`**
-- Orquestador: carga CSV, llama las 4 funciones anteriores en orden, exporta a `ruta_salida` con `index=False`, encoding UTF-8.
-- Precondición: `assert ruta_entrada.exists()`.
-- Postcondición: `assert ruta_salida.exists()`.
-
-#### Consideraciones de implementación
-- Todas las operaciones de ventana deben hacerse **dentro de cada `customer_id`** usando `groupby(...).transform(...)` o `groupby(...).apply(...)`.
-- La pendiente de regresión lineal se puede calcular con `np.polyfit(x, y, 1)[0]` dentro de una función auxiliar `_pendiente_lineal(series: pd.Series) -> float`.
+- `generar_features(settings.EVAL_TRANSACTIONS_PATH, settings.EVAL_FEATURES_PATH)`.
+- Aserciones existentes aplican igual.
+- Llamada desde `main.py` si `eval_features.csv` no existe.
 
 ---
 
 ### 1.3 — Modelo Logístico Baseline
 
-**Archivo:** `modelos/estatico/logistico.py`  
-**Salidas:** `db/modelo_logistico.pkl`, `db/metricas_baseline.json`  
-**EARS:** B01–B06
-
-#### Descripción funcional
-Modelo logístico scikit-learn entrenado una sola vez, serializado en `.pkl`. Expone `predict_proba(customer_id, month) -> float`. Métricas (Gini, KS, AUC) calculadas al entrenar y guardadas en JSON.
-
-#### Funciones a implementar
-
-**`_cargar_features(ruta: Path) -> pd.DataFrame`**
-- Carga `features_dinamicos.csv`.
-- Precondición: `assert ruta.exists()`.
-- Retorna DataFrame con columnas necesarias.
-
-**`_construir_pipeline() -> Pipeline`**
-- Retorna `Pipeline([('scaler', StandardScaler()), ('clf', LogisticRegression(max_iter=1000))])`.
-- Las features de entrada son: `ratio_deuda_ingreso_ma`, `tendencia_utilizacion`, `volatilidad_pagos`, `utilization_rate`, `days_in_default`, `num_transactions`.
-
-**`_calcular_metricas(y_true: np.ndarray, y_prob: np.ndarray) -> dict[str, float]`**
-- Calcula AUC-ROC, Gini (= 2·AUC − 1), KS (max diferencia entre TPR y FPR).
-- Precondición: `assert len(y_true) == len(y_prob)`.
-- Postcondición: `assert 0 <= metricas['auc'] <= 1`.
-- Retorna dict con claves `auc`, `gini`, `ks`.
-
-**`entrenar_y_guardar(ruta_features: Path, ruta_modelo: Path, ruta_metricas: Path) -> None`**
-- Split estratificado 80/20 por `default_indicator`.
-- Entrena pipeline, serializa con `pickle` en `ruta_modelo`.
-- Calcula métricas sobre test set y guarda JSON en `ruta_metricas`.
-- Precondición: `assert not ruta_modelo.exists()` (no re-entrenar si ya existe).
-
-**`cargar_modelo(ruta_modelo: Path) -> Pipeline`**
-- Deserializa y retorna el pipeline.
-- Precondición: `assert ruta_modelo.exists()`.
-
-**`predict_proba(customer_id: str, month: int, df_features: pd.DataFrame, modelo: Pipeline) -> float`**
-- Filtra la fila `(customer_id, month)` del DataFrame de features.
-- Precondición: `assert not fila.empty`.
-- Retorna `float` en `[0, 1]` representando P(default).
-
-**`inicializar(ruta_features: Path, ruta_modelo: Path, ruta_metricas: Path) -> Pipeline`**
-- Si `ruta_modelo` existe → carga y retorna.
-- Si no → llama `entrenar_y_guardar` y retorna modelo cargado.
-- Implementa EARS-G07 y EARS-B04.
+**Estado:** ✅ Completada. No requiere cambios funcionales. El eval dataset se evaluará en Fase 5, no en este módulo.
 
 ---
 
 ## Fase 2 — Modelo dinámico (Kalman + LQR)
 
-### Prerequisito de Fase 2
-Verificar existencia de `db/raw_transactions.csv` y `db/features_dinamicos.csv`. Si no existen, lanzar `FileNotFoundError` con ruta y fase responsable (EARS-DEP01).
+**Estado:** ✅ Completada. Las implementaciones existentes en `identificacion.py`, `kalman.py` y `controlador.py` son correctas con `N_STATES=3`.
 
----
+> **Recordatorio dimensional:** El vector de estado tiene **3 componentes** (`outstanding_debt`, `income`, `utilization_rate`). Las matrices Q_lqr, A, K, P son de dimensión 3×3, 3×3, 1×3, 3×3 respectivamente.
 
-### 2.1 — Identificación del sistema
-
-**Archivo:** `modelos/dinamico/identificacion.py`  
-**Salida:** `db/matrices_sistema.npz`  
-**EARS:** S01–S05
-
-#### Descripción funcional
-Ajusta por regresión el modelo de espacio de estado discreto:
-
-```
-x_{t+1} = A·x_t + B·u_t
-y_t      = C·x_t
-```
-
-Donde:
-- **Estado** `x_c ∈ ℝ⁴`: `[outstanding_debt, income, utilization_rate, days_in_default]`
-- **Control** `u_t ∈ ℝ¹`: `credit_limit`
-- **Salidas observables** `y_t ∈ ℝ²`: `[num_transactions, payment_amount]`
-
-#### Funciones a implementar
-
-**`normalizar_datos(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, float]]`**
-- Normaliza las 4 variables de estado y el control a escala `[0, 1]` o media 0 / std 1.
-- Retorna DataFrame normalizado y diccionario de parámetros de escala para desnormalizar.
-- Precondición: `assert df.shape[1] >= 5`.
-
-**`construir_matrices_regresion(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]`**
-- Por cada cliente, para meses `t = 1..23`, construye pares `(x_t, u_t)` → `x_{t+1}`.
-- Empila en matrices `X_in ∈ ℝ^{N×5}` (estado + control) y `X_out ∈ ℝ^{N×4}` (siguiente estado).
-- Precondición: `assert X_in.shape[0] == X_out.shape[0]`.
-
-**`identificar_AB(X_in: np.ndarray, X_out: np.ndarray) -> tuple[np.ndarray, np.ndarray]`**
-- Resuelve `[A | B] = X_out.T @ np.linalg.pinv(X_in.T)` (regresión mínimos cuadrados).
-- `A ∈ ℝ^{4×4}`, `B ∈ ℝ^{4×1}`.
-- Precondición: `assert X_in.shape[1] == 5`.
-- Postcondición: `assert A.shape == (4, 4) and B.shape == (4, 1)`.
-
-**`identificar_C(df: pd.DataFrame, A: np.ndarray, B: np.ndarray) -> np.ndarray`**
-- Ajusta `C ∈ ℝ^{2×4}` tal que `y_t ≈ C·x_t` por mínimos cuadrados.
-- Precondición: `assert A.shape == (4, 4)`.
-- Postcondición: `assert C.shape == (2, 4)`.
-
-**`verificar_mse(A: np.ndarray, B: np.ndarray, X_in: np.ndarray, X_out: np.ndarray) -> float`**
-- Calcula MSE de reconstrucción en escala normalizada.
-- Precondición: matrices consistentes en dimensiones.
-- Postcondición: `assert mse < 0.05` (EARS-S04) — si falla, loguea advertencia.
-
-**`guardar_matrices(A, B, C, params_escala, ruta: Path) -> None`**
-- Serializa con `np.savez(ruta, A=A, B=B, C=C)` y guarda `params_escala` en JSON auxiliar.
-
-**`cargar_matrices(ruta: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]`**
-- Carga y retorna `(A, B, C)`.
-- Precondición: `assert ruta.exists()`.
-
-**`identificar(ruta_features: Path, ruta_salida: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]`**
-- Orquestador: si `ruta_salida` existe → carga. Si no → ejecuta pipeline completo y guarda.
-
----
-
-### 2.2 — Filtro de Kalman
-
-**Archivo:** `modelos/dinamico/kalman.py`  
-**EARS:** K01–K05
-
-#### Descripción funcional
-Filtro de Kalman discreto que estima el estado del cliente `x̂_t` a partir de observaciones parciales `y_t = [num_transactions, payment_amount]`. Implementado como clase para mantener estado entre llamadas.
-
-#### Clase `FiltroKalman`
-
-**`__init__(self, A, B, C, Q, R, x0, P0)`**
-- `A ∈ ℝ^{4×4}`, `B ∈ ℝ^{4×1}`, `C ∈ ℝ^{2×4}`.
-- `Q ∈ ℝ^{4×4}` diagonal (ruido de proceso), `R ∈ ℝ^{2×2}` diagonal (ruido de medición).
-- `x0 ∈ ℝ^{4×1}` estado inicial, `P0 ∈ ℝ^{4×4}` covarianza inicial.
-- Precondición: `assert A.shape == (4, 4)` y `assert C.shape == (2, 4)`.
-
-**`predecir(self, u_t: np.ndarray) -> tuple[np.ndarray, np.ndarray]`**
-- Predicción: `x̂_{t|t-1} = A·x̂_{t-1} + B·u_t`.
-- `P_{t|t-1} = A·P_{t-1}·A^T + Q`.
-- Retorna `(x_pred, P_pred)`.
-- Postcondición: `assert x_pred.shape == (4, 1)`.
-
-**`actualizar(self, y_t: np.ndarray) -> tuple[np.ndarray, np.ndarray]`**
-- Si `y_t` contiene NaN → omitir actualización, propagar predicción (EARS-K03).
-- Ganancia: `K = P_{t|t-1}·C^T·(C·P_{t|t-1}·C^T + R)^{-1}`.
-- `x̂_t = x̂_{t|t-1} + K·(y_t - C·x̂_{t|t-1})`.
-- `P_t = (I - K·C)·P_{t|t-1}`.
-- Precondición: `assert y_t.shape == (2, 1)`.
-
-**`_simetrizar_covarianza(self, P: np.ndarray) -> np.ndarray`**
-- Si `np.linalg.eigvals(P).min() < 0` → aplica `P = (P + P.T) / 2` y loguea advertencia (EARS-K05).
-- Precondición: `assert P.shape == (4, 4)`.
-
-**`paso(self, u_t: np.ndarray, y_t: np.ndarray) -> tuple[np.ndarray, np.ndarray]`**
-- Llama `predecir` → `actualizar` → `_simetrizar_covarianza`.
-- Actualiza `self.x_hat` y `self.P`.
-- Retorna `(x_hat, P)`.
-
-**`ejecutar_secuencia(self, U: np.ndarray, Y: np.ndarray) -> tuple[np.ndarray, np.ndarray]`**
-- Itera sobre `T` pasos, acumula `X_hat ∈ ℝ^{T×4}` y `P_trace ∈ ℝ^T` (traza de P en cada paso).
-- Precondición: `assert U.shape[0] == Y.shape[0]`.
-
-#### Parámetros hiperparámetros
-- `Q = diag(0.01, 0.01, 0.01, 0.01)` (configurable).
-- `R = diag(0.1, 0.1)` (configurable).
-- Exponer como argumentos con defaults en `__init__`.
-
----
-
-### 2.3 — Controlador LQR
-
-**Archivo:** `modelos/dinamico/controlador.py`  
-**EARS:** C01–C06
-
-#### Descripción funcional
-Calcula la ganancia de realimentación `K` resolviendo la ecuación de Riccati discreta. Produce la decisión de crédito `u_b = -K·x̂_c`, saturada en `[0, credit_limit_max]`. Expone `score_dinamico` normalizado en `[0, 1]`.
-
-#### Funciones a implementar
-
-**`calcular_ganancia_lqr(A: np.ndarray, B: np.ndarray, Q_lqr: np.ndarray, R_lqr: np.ndarray) -> np.ndarray`**
-- Resuelve DARE con `scipy.linalg.solve_discrete_are(A, B, Q_lqr, R_lqr)`.
-- `K = (R_lqr + B^T·P·B)^{-1}·B^T·P·A`.
-- Precondición: `assert A.shape == (4, 4) and B.shape == (4, 1)`.
-- Postcondición: `assert K.shape == (1, 4)`.
-
-**`decidir_limite(K: np.ndarray, x_hat: np.ndarray, credit_limit_max: float) -> float`**
-- `u_b = float(-K @ x_hat)`.
-- Saturar: `limit_recomendado = max(0.0, min(credit_limit_max, u_b))`.
-- Precondición: `assert x_hat.shape == (4, 1)`.
-- Postcondición: `assert 0 <= limit_recomendado <= credit_limit_max`.
-
-**`score_dinamico(x_hat: np.ndarray, P: np.ndarray, K: np.ndarray, credit_limit_max: float) -> float`**
-- Combina el límite recomendado y la incertidumbre (traza de P) para producir score en `[0, 1]`.
-- Fórmula orientativa: `score = limit_recomendado / credit_limit_max * (1 - lambda * trace(P))`, donde `lambda` es factor de penalización de incertidumbre configurable.
-- Clip final: `max(0.0, min(1.0, score))`.
-- Precondición: `assert 0 < credit_limit_max`.
-- Postcondición: `assert 0.0 <= score <= 1.0`.
-
-**`matrices_costo_default() -> tuple[np.ndarray, np.ndarray]`**
-- Retorna `Q_lqr` y `R_lqr` con valores por defecto.
-- `Q_lqr = diag(1, 1, 1, 10)` — penaliza fuertemente `days_in_default` (índice [3,3]).
-- `R_lqr = np.array([[0.1]])`.
-- Documenta que Q_lqr[3,3] alto → decisiones conservadoras (EARS-C04).
+No se realizan cambios funcionales en Fase 2. Los ajustes de logging y patrones se incorporan en Fase 4.
 
 ---
 
 ## Infraestructura SQLite y repositorios
 
-**Archivos:** `gui/infraestructura/db.py`, `gui/infraestructura/repositorios/*.py`  
-**EARS:** I01–I04
-
-### Esquema de base de datos
-
-#### Tabla `customers`
-```sql
-CREATE TABLE IF NOT EXISTS customers (
-    customer_id TEXT PRIMARY KEY,
-    archetype   TEXT NOT NULL
-);
-```
-
-#### Tabla `monthly_states`
-```sql
-CREATE TABLE IF NOT EXISTS monthly_states (
-    customer_id       TEXT,
-    month             INTEGER,
-    income            REAL,
-    credit_limit      REAL,
-    utilization_rate  REAL,
-    outstanding_debt  REAL,
-    payment_amount    REAL,
-    days_in_default   INTEGER,
-    num_transactions  INTEGER,
-    transaction_vol   REAL,
-    default_indicator INTEGER,
-    PRIMARY KEY (customer_id, month)
-);
-```
-
-#### Tabla `estimated_states`
-```sql
-CREATE TABLE IF NOT EXISTS estimated_states (
-    customer_id    TEXT,
-    month          INTEGER,
-    x_hat_debt     REAL,
-    x_hat_income   REAL,
-    x_hat_util     REAL,
-    x_hat_days     REAL,
-    p_trace        REAL,
-    score_dinamico REAL,
-    PRIMARY KEY (customer_id, month)
-);
-```
-
-#### Tabla `decisions`
-```sql
-CREATE TABLE IF NOT EXISTS decisions (
-    customer_id       TEXT,
-    month             INTEGER,
-    limit_recomendado REAL,
-    score_dinamico    REAL,
-    score_logistico   REAL,
-    PRIMARY KEY (customer_id, month)
-);
-```
-
-#### Tabla `metrics`
-```sql
-CREATE TABLE IF NOT EXISTS metrics (
-    modelo TEXT,
-    metrica TEXT,
-    valor  REAL,
-    mes    INTEGER,
-    PRIMARY KEY (modelo, metrica, mes)
-);
-```
-
-### Funciones en `db.py`
-
-**`inicializar_db(ruta: Path) -> sqlite3.Connection`**
-- Crea el archivo si no existe (EARS-I04).
-- Ejecuta `CREATE TABLE IF NOT EXISTS` para las 5 tablas.
-- Precondición: `assert ruta.parent.exists()`.
-- Postcondición: `assert ruta.exists()`.
-
-**`obtener_conexion(ruta: Path) -> sqlite3.Connection`**
-- Retorna conexión con `row_factory = sqlite3.Row`.
-- Precondición: `assert ruta.exists()`.
-
-### Repositorios
-
-#### `cliente_repo.py` — `CustomerRepository`
-
-**`insertar_cliente(conn, customer_id: str, archetype: str) -> None`**  
-**`obtener_clientes(conn) -> list[dict]`**  
-**`obtener_cliente(conn, customer_id: str) -> dict | None`**
-
-#### `estado_repo.py` — `EstadoRepository`
-
-**`insertar_estado_mensual(conn, estado: dict) -> None`**  
-**`insertar_estado_estimado(conn, estimado: dict) -> None`** — guarda `x_hat` (4 floats), `p_trace`, `score_dinamico` (EARS-I02).  
-**`obtener_trayectoria(conn, customer_id: str) -> list[dict]`**  
-**`obtener_estado_estimado(conn, customer_id: str) -> list[dict]`**
-
-#### `decision_repo.py` — `DecisionRepository`
-
-**`insertar_decision(conn, decision: dict) -> None`**  
-**`obtener_decisiones(conn, customer_id: str) -> list[dict]`**  
-**`obtener_ultimas_n(conn, customer_id: str, n: int) -> list[dict]`**
+**Estado:** ✅ Completada. Archivos `db.py`, `cliente_repo.py`, `estado_repo.py`, `decision_repo.py` funcionan correctamente.
 
 ---
 
 ## Fase 3 — Backtesting y comparación
 
-**Archivo:** `modelos/evaluacion/backtesting.py`  
-**Salidas:** `db/comparacion_modelos.json` + tablas SQLite pobladas  
-**EARS:** V01–V06
-
-### Prerequisito de Fase 3
-Verificar existencia de `db/modelo_logistico.pkl` y `db/matrices_sistema.npz`. Si falta alguno → `FileNotFoundError` (EARS-DEP02).
-
-### Descripción funcional
-Simulación mes a mes de los 500 clientes bajo dos políticas:
-1. **Modelo logístico**: puntúa cada mes con P(default); aplica una política simple de crédito basada en umbral.
-2. **Modelo dinámico**: usa Kalman + LQR para decidir límite mes a mes.
-
-Ambas simulaciones calculan pérdidas cuando hay default y se comparan al final.
-
-### Funciones a implementar
-
-**`calcular_perdida_mes(outstanding_debt: float, default: int, tasa_recuperacion: float = 0.30) -> float`**
-- Si `default == 1` → `perdida = outstanding_debt * (1 - tasa_recuperacion)`.
-- Si `default == 0` → `perdida = 0.0`.
-- Precondición: `assert 0 <= tasa_recuperacion <= 1`.
-
-**`simular_modelo_logistico(df_features: pd.DataFrame, modelo: Pipeline) -> pd.DataFrame`**
-- Para cada `(customer_id, month)`, calcula P(default) y pérdida.
-- Retorna DataFrame con columnas: `customer_id`, `month`, `prob_default`, `perdida`.
-- Precondición: `assert 'default_indicator' in df_features.columns`.
-
-**`simular_modelo_dinamico(df: pd.DataFrame, A, B, C, K, Q_k, R_k) -> pd.DataFrame`**
-- Para cada cliente, instancia `FiltroKalman` y ejecuta Kalman + LQR mes a mes.
-- Registra en cada paso: `x_hat`, `p_trace`, `score_dinamico`, `limit_recomendado`, `perdida`.
-- Retorna DataFrame con esas columnas más `customer_id` y `month`.
-
-**`calcular_gini_ks_auc(y_true: np.ndarray, y_score: np.ndarray) -> dict[str, float]`**
-- Reutiliza lógica de `_calcular_metricas` del módulo logístico.
-- Precondición: `assert len(y_true) == len(y_score)`.
-
-**`calcular_psi(score_base: np.ndarray, score_mes: np.ndarray, bins: int = 10) -> float`**
-- PSI = Σ (Actual% − Esperado%) × ln(Actual% / Esperado%).
-- Precondición: `assert len(score_base) > 0 and len(score_mes) > 0`.
-
-**`calcular_psi_serie(scores_por_mes: dict[int, np.ndarray]) -> dict[int, float]`**
-- Calcula PSI usando mes 1 como base para todos los meses posteriores.
-- Retorna `{month: psi_value}`.
-
-**`comparar_modelos(resultados_logistico, resultados_dinamico, df_features) -> dict`**
-- Computa métricas para ambos modelos (Gini, KS, AUC, pérdida total, PSI mensual).
-- Si pérdida dinámica no reduce ≥ 5% vs baseline → `warnings.warn(...)` y log (EARS-V05).
-- Retorna dict para serialización JSON.
-
-**`guardar_comparacion(comparacion: dict, ruta: Path) -> None`**
-- Serializa con `json.dump`.
-- Precondición: `assert ruta.parent.exists()`.
-
-**`poblar_sqlite(conn, resultados_dinamico: pd.DataFrame, decisiones: pd.DataFrame) -> None`**
-- Inserta filas en `estimated_states` y `decisions` vía repositorios.
-
-**`ejecutar_backtesting(ruta_features: Path, ruta_matrices: Path, ruta_modelo_pkl: Path, ruta_salida_json: Path, conn) -> None`**
-- Orquestador completo. Verifica prerequisitos, ejecuta ambas simulaciones, compara, guarda JSON y puebla SQLite.
+**Estado:** ✅ Completada. Salidas: `db/comparacion_modelos.json` + tablas SQLite pobladas.
 
 ---
 
-## Fase 4 — Interfaz gráfica NiceGUI
+## Fase 4 — Revisión de código, patrones de diseño y logging
 
-**EARS:** GUI01–GUI05, DC01–DC06, DB01–DB07
+**Prerequisito:** Fases 0–3 e Infraestructura completadas.
 
-### 4.0 — CSS global y estructura base
+Esta fase aplica EARS-F5-01, EARS-F5-02, EARS-G04, EARS-G05, EARS-G06 sobre el código ya escrito, y añade el sistema de logging transversal.
 
-**Archivo:** `gui/global.css`
+---
 
-```css
-/* Reset, variables de fuente, base font-size */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { font-size: 10px; }
-body { font-family: 'Inter', sans-serif; }
+### 4.0 — Corrección de typo crítico
+
+#### T4.0.1 — Renombrar `modelos/evaulacion/` a `modelos/evaluacion/`
+
+- Renombrar el directorio en disco.
+- Actualizar todos los imports que referencian `modelos.evaulacion.*` → `modelos.evaluacion.*`.
+- Verificar que `from modelos.evaluacion.backtesting import ...` no lanza `ModuleNotFoundError`.
+
+---
+
+### 4.1 — Sistema de logging canónico
+
+**Archivo:** `utils/logger.py`
+
+**Formato canónico:**
+```
+[TIMESTAMP] | [LEVEL] | [SERVICE / MODULE] | [TRACE ID] | MESSAGE
 ```
 
-**Archivos:** `gui/cliente/styles.css`, `gui/banco/styles.css`  
-- Variables de color para cada parte.
-- **Cliente**: `--color-1: #3d8a5c` ... `--color-5: #f5faf5`.
-- **Banco**: `--color-1: #2e3f52` ... `--color-5: #f4e1a4`.
-- Todas las medidas en `rem`.
+Ejemplo:
+```
+[2026-06-27 14:32:01] | INFO | modelos.dinamico.kalman | 7a3f | FiltroKalman.step: t=12, trace(P)=0.0423
+```
 
-**Estrategia de inyección CSS en NiceGUI:**
-- En el arranque de la aplicación, inyectar con `ui.add_head_html('<link rel="stylesheet" href="/gui/global.css">')`.
-- Por ruta, inyectar el CSS local correspondiente.
-- Usar clases prefijadas: `.cliente-score-gauge`, `.banco-panel-metricas`, etc.
+#### Función `setup_logging(level: int = logging.INFO) -> None`
 
-### 4.1 — Arranque de la aplicación
+- Configura el logger raíz **una única vez** con `logging.basicConfig`.
+- Formato: `[%(asctime)s] | %(levelname)s | %(name)s | %(process)d | %(message)s`.
+- Verifica que no se configure dos veces usando un flag de módulo `_CONFIGURED: bool = False`.
+- Precondición: `assert isinstance(level, int)`.
+- Postcondición: `assert logging.getLogger().hasHandlers()`.
 
-**Archivo:** `main.py` (raíz del proyecto)
+#### Función `get_logger(module_name: str) -> logging.Logger`
 
-- Inicializa SQLite (si no existe).
-- Verifica prerequisitos de todas las fases; ejecuta pipelines faltantes en orden.
-- Registra rutas NiceGUI: `/cliente` y `/banco`.
-- Llama `ui.run(...)`.
+- Retorna `logging.getLogger(module_name)`.
+- Precondición: `assert module_name.strip() != ''`.
+- Todo módulo del proyecto llama `logger = get_logger(__name__)` al inicio del archivo.
 
-### 4.2 — Dashboard Cliente
+#### `utils/file_helpers.py`
 
-**Ruta:** `/cliente`  
-**Archivos:** `gui/cliente/paginas/dashboard_cliente.py` + componentes
+**`leer_csv(path: Path) -> pd.DataFrame`**
+- Lee CSV con logging de entrada y forma del resultado.
+- Precondición: `assert path.exists()`.
+- Lanza `FileNotFoundError` con ruta si no existe.
 
-#### Componentes
+**`leer_json(path: Path) -> dict`**
+- Lee JSON con logging.
+- Precondición: `assert path.suffix == '.json'`.
 
-**`selector_cliente.py` — `SelectorCliente`**
-- `ui.select` con búsqueda, poblado desde `CustomerRepository.obtener_clientes()`.
-- Al cambiar → emite evento que actualiza todos los demás componentes.
-- CSS class: `.cliente-selector`.
+**`escribir_csv(df: pd.DataFrame, path: Path) -> None`**
+- Escribe CSV con logging de filas escritas.
+- Precondición: `assert len(df) > 0`.
 
-**`score_gauge.py` — `ScoreGauge`**
-- Muestra score dinámico actual (0–100) como gauge circular.
-- Implementado con SVG inline o `ui.echart` (gauge chart).
-- Si `score < 0.40` → fondo del panel cambia a `#f5e6a4` (EARS-DC03).
-- CSS class: `.cliente-score-gauge`.
+---
 
-**`trayectoria_chart.py` — `TrayectoriaChart`**
-- Gráfico de líneas con las 4 dimensiones del estado estimado en subgráficos sincronizados.
-- Implementado con `ui.echart` (4 series en subgráficos o 4 gráficas apiladas).
-- Si hay meses con `default_indicator = 1` → marcador visual (punto rojo) en la línea (EARS-DC06).
-- CSS class: `.cliente-trayectoria-chart`.
+### 4.2 — Integración de logging en módulos existentes
 
-**`tabla_transacciones.py` — `TablaTransacciones`**
-- Muestra últimas 6 filas con columnas: `mes`, `pago`, `deuda`, `estado estimado`.
-- Implementado con `ui.table`.
-- CSS class: `.cliente-tabla-transacciones`.
+#### T4.2.1 — Agregar logging a `modelos/features/pipeline.py`
 
-**`dashboard_cliente.py`**
-- Layout: grid de 2 columnas — izquierda (selector + gauge), derecha (trayectoria + tabla).
-- Maneja callbacks de `SelectorCliente` para actualizar los 3 componentes.
+- Al inicio: `logger = get_logger(__name__)`.
+- En `generar_features`: log inicio, log de cada función aplicada, log de filas en salida.
+- En `imputar_income`: log si hubo NaNs imputados.
 
-### 4.3 — Dashboard Banco
+#### T4.2.2 — Agregar logging a `modelos/estatico/logistico.py`
 
-**Ruta:** `/banco`  
-**Archivos:** `gui/banco/paginas/dashboard_banco.py` + componentes
+- En `train_and_save`: log inicio de entrenamiento, log de métricas resultantes.
+- En `initialize`: log si carga desde disco o entrena nuevo.
+- En `predict_proba`: log de customer_id, month y probabilidad resultante a nivel DEBUG.
 
-#### Componentes
+#### T4.2.3 — Agregar logging a `modelos/dinamico/identificacion.py`
 
-**`filtro_arquetipo.py` — `FiltroArquetipo`**
-- `ui.select` o `ui.toggle` con valores: `good`, `recurrent`, `over`, `fraud`, `low`, `todos`.
-- Filtra la cartera visible en los demás componentes (EARS-DB06).
-- CSS class: `.banco-filtro-arquetipo`.
+- En `identify`: log si carga matrices o las recalcula.
+- En `verify_mse`: log del MSE calculado (INFO si OK, WARNING si ≥ 0.05).
+- En `identify_AB`: log de autovalores de A (WARNING si inestable).
 
-**`features_agregados.py` — `FeaturesAgregados`**
-- Panel con 3 métricas agregadas de la cartera filtrada:
-  - Ratio deuda/ingreso promedio.
-  - Tendencia de utilización media.
-  - Distribución de volatilidad de pagos (histograma pequeño con `ui.echart`).
-- CSS class: `.banco-features-agregados`.
+#### T4.2.4 — Agregar logging a `modelos/dinamico/kalman.py`
 
-**`panel_metricas.py` — `PanelMetricas`**
-- Tabla side-by-side: columnas `Métrica | Logístico | Dinámico`.
-- Filas: Gini, KS, AUC, Pérdida Esperada.
-- Carga datos desde `db/comparacion_modelos.json`.
-- CSS class: `.banco-panel-metricas`.
+- En `_symmetrize_covariance`: ya emite `warnings.warn`; añadir `logger.warning` con mismo mensaje.
+- En `execute_sequence`: log resumen al final (T pasos, trace(P) final).
 
-**`autovalores_plot.py` — `AutovaloresPlot`**
-- Plano complejo con autovalores de A ploteados como puntos.
-- Círculo unitario superpuesto para visualizar estabilidad.
-- Ganancia K como gráfico de barras horizontal.
-- Implementado con `ui.echart` (scatter + círculo paramétrico).
-- CSS class: `.banco-autovalores-plot`.
+#### T4.2.5 — Agregar logging a `modelos/dinamico/controlador.py`
 
-**`psi_chart.py` — `PSIChart`**
-- Gráfico de línea del PSI mensual.
-- Línea de umbral en `PSI = 0.25`.
-- Puntos por encima del umbral marcados con alerta roja (EARS-DB05).
-- CSS class: `.banco-psi-chart`.
+- En `calculate_lqr_gain`: log de norma de K resultante.
+- En `dynamic_score`: log a nivel DEBUG de score y trace(P).
 
-**`simulacion_contrafactual.py` — `SimulacionContrafactual`**
-- Selector de cliente.
-- Dos series en el mismo gráfico: trayectoria con LQR vs. sin LQR (crédito fijo).
-- Variable a visualizar seleccionable: `deuda`, `ingreso`, `utilizacion`, `dias_mora`.
-- CSS class: `.banco-simulacion-contrafactual`.
+#### T4.2.6 — Agregar logging a `modelos/evaluacion/backtesting.py`
 
-**`dashboard_banco.py`**
-- Layout de 3 secciones:
-  1. **Cabecera**: filtro de arquetipo.
-  2. **Fila 1**: features agregados (izq) + panel métricas (der).
-  3. **Fila 2**: autovalores + PSI.
-  4. **Fila 3**: simulación contrafactual (ancho completo).
+- En `run_backtesting`: log de cada etapa (carga modelo, simulación logístico, simulación dinámico, comparación, SQLite).
+- En `compare_models`: log de reducción de pérdida y advertencia si < 5%.
+
+#### T4.2.7 — Agregar logging a `gui/infraestructura/db.py`
+
+- En `inicializar_db`: log de tablas creadas.
+- En `obtener_conexion`: log de conexión establecida.
+
+---
+
+### 4.3 — Revisión de calidad de código
+
+#### T4.3.1 — Auditoría de longitud de funciones
+
+- Verificar que ninguna función supera 60 líneas.
+- Si alguna supera el límite, extraer subfunciones con nombres descriptivos.
+- Herramienta sugerida: `grep -rn "def " modelos/ scripts/ gui/ | wc -l` como punto de partida.
+
+#### T4.3.2 — Auditoría de tipado explícito
+
+- Toda variable local, parámetro y retorno debe tener anotación de tipo.
+- Verificar con `mypy modelos/ utils/ gui/ scripts/` (ignorar errores de librerías externas).
+
+#### T4.3.3 — Auditoría de aserciones
+
+- Mínimo 2 aserciones por función.
+- Revisar especialmente funciones de repositorios y utilidades.
+
+#### T4.3.4 — Auditoría DRY
+
+- Identificar lógica duplicada entre `backtesting.py` y `logistico.py` (cálculo de métricas).
+- `_calculate_metrics` ya existe en `logistico.py` y se importa en `backtesting.py` — verificar que no hay copia local.
+
+---
+
+### 4.4 — Integración del Builder en `scripts/transacciones.py`
+
+#### T4.4.1 — Refactorizar script para usar `CustomerDirector`
+
+- El script importa `CustomerBuilder` y `CustomerDirector` de `modelos.dominio`.
+- La función `main()` queda reducida a: parsear args → instanciar director → construir dataset → guardar CSV.
+- Las funciones `_row_*` y `generate_customer` se eliminan del script.
+
+#### T4.4.2 — Mover lógica de generación de filas al Builder
+
+- Cada `_build_month_<archetype>` en `CustomerBuilder` recibe la lógica actualmente en `_row_*`.
+- Los shocks exógenos (1–5%) deben estar incorporados en `arquetipos.py` como `SHOCK_PROB` por arquetipo.
+- El drift temporal debe introducirse en el Builder según el mes y el arquetipo.
+
+---
+
+## Fase 5 — Interfaz gráfica Streamlit
+
+**Prerequisito:** Fases 0–4 completadas, `db/eval_features.csv` existe.
+
+**Archivo de entrada:** `main.py` (raíz) → `streamlit run main.py`.
+
+---
+
+### 5.0 — Bootstrap de la aplicación
+
+**Archivo:** `main.py`
+
+```
+main.py:
+  1. Llama setup_logging() de utils.logger
+  2. Verifica y ejecuta pipelines faltantes en orden (EARS-G09):
+     - raw_transactions.csv → pipeline.py → features_dinamicos.csv
+     - eval_transactions.csv → pipeline.py → eval_features.csv
+     - modelo_logistico.pkl (initialize)
+     - matrices_sistema.npz (identificar)
+     - comparacion_modelos.json (run_backtesting)
+  3. Llama streamlit run gui/app.py (o importa y ejecuta gui.app.run())
+```
+
+> En Streamlit, `main.py` es el archivo pasado a `streamlit run`. Ejecuta `gui.app.run()`.
+
+**Archivo:** `gui/app.py`
+
+**Función `run() -> None`**:
+- Configura `st.set_page_config(page_title="Credit Score Dashboard", layout="wide")`.
+- Carga recursos en `st.session_state` si no existen (`@st.cache_resource` para modelos):
+  - `modelo`: `load_model(settings.LOGISTICS_MODEL_PATH)`.
+  - `A, B, C`: `load_matrices(settings.MATRIX_SYSTEM_PATH)`.
+  - `K`: `calculate_lqr_gain(A, B, *default_cost_matrices())`.
+  - `scale_params`: JSON de `settings.MATRIX_SYSTEM_PATH.with_suffix('.json')`.
+  - `comparacion`: JSON de `settings.COMPARISON_PATH`.
+- Carga `eval_df` en `st.session_state`:
+  - Si `'eval_df'` no existe en session_state → `pd.read_csv(settings.EVAL_FEATURES_PATH)`.
+  - Almacenar como `st.session_state['eval_df']`.
+- Renderiza sidebar con descripción del proyecto y selector de pestaña.
+- Renderiza pestañas con `st.tabs(["Análisis Descriptivo", "Modelo Estático", "Modelo Dinámico", "Comparación"])`.
+- Delega cada pestaña a su módulo de página correspondiente.
+- Precondición: `assert 'eval_df' in st.session_state`.
+- Precondición: `assert not st.session_state['eval_df'].empty`.
+
+---
+
+### 5.1 — Pestaña 1: Análisis Descriptivo y Diagnóstico
+
+**Archivo:** `gui/paginas/analisis_descriptivo.py`
+
+#### Función `render(eval_df: pd.DataFrame) -> None`
+
+Orquestador de la pestaña. Llama a los componentes en orden.
+
+Precondición: `assert isinstance(eval_df, pd.DataFrame) and len(eval_df) > 0`.
+
+#### `gui/componentes/metricas_card.py`
+
+**`render_resumen_estadistico(df: pd.DataFrame) -> None`**
+- `st.dataframe` con media, std, min, max, % de nulos por columna numérica.
+- Precondición: `assert not df.empty`.
+- Precondición: `assert len(df.select_dtypes('number').columns) > 0`.
+
+**`render_distribucion_arquetipos(df: pd.DataFrame) -> None`**
+- `st.bar_chart` o `st.plotly_chart` con conteo por `archetype` (si la columna existe).
+- Precondición: `assert 'customer_id' in df.columns`.
+
+**`render_alertas_diagnostico(df: pd.DataFrame, train_df: pd.DataFrame | None = None) -> None`**
+- Calcula correlaciones entre columnas numéricas; alerta si `|r| > 0.9`.
+- Detecta outliers: Z-score > 3 por columna; reporta conteo.
+- Si `train_df` proporcionado: KS-test por columna entre eval y train; alerta si p-value < 0.05 (posible drift).
+- Muestra alertas en `st.warning(...)` o `st.error(...)`.
+- Precondición: `assert len(df) > 0`.
+- Precondición: `assert df.select_dtypes('number').shape[1] >= 2`.
+
+**`render_histogramas(df: pd.DataFrame, columnas: list[str]) -> None`**
+- Renderiza histogramas en grid de 2 columnas usando `st.columns`.
+- Precondición: `assert len(columnas) > 0`.
+- Precondición: `assert all(c in df.columns for c in columnas)`.
+
+---
+
+### 5.2 — Pestaña 2: Modelo Estático
+
+**Archivo:** `gui/paginas/modelo_estatico.py`
+
+#### Función `render(eval_df: pd.DataFrame, modelo: Pipeline) -> None`
+
+Precondición: `assert 'default_indicator' in eval_df.columns`.
+Precondición: `assert hasattr(modelo, 'predict_proba')`.
+
+Flujo interno:
+1. Imputar `settings.FEATURE_COLUMNS` con `fillna(0.0)`.
+2. Calcular `y_prob = modelo.predict_proba(eval_df[settings.FEATURE_COLUMNS])[:, 1]`.
+3. Extraer `y_true = eval_df[settings.TARGET_COLUMN].values`.
+4. Llamar componentes de visualización.
+
+#### `gui/componentes/graficos_roc.py`
+
+**`render_curva_roc(y_true: np.ndarray, y_prob: np.ndarray) -> None`**
+- Calcula `fpr, tpr, _` con `roc_curve`.
+- Plotea con `st.plotly_chart` (línea + diagonal de referencia).
+- Muestra AUC en título o subtítulo.
+- Precondición: `assert len(y_true) == len(y_prob)`.
+- Precondición: `assert y_prob.min() >= 0.0 and y_prob.max() <= 1.0`.
+
+**`render_ks_plot(y_true: np.ndarray, y_prob: np.ndarray) -> None`**
+- Calcula distribuciones acumuladas de scores para clase 0 y clase 1.
+- Plotea ambas curvas; marca distancia KS máxima.
+- Muestra valor KS en subtítulo.
+- Precondición: `assert len(np.unique(y_true)) == 2`.
+- Precondición: `assert len(y_true) == len(y_prob)`.
+
+**`render_metricas_tabla(metricas: dict[str, float]) -> None`**
+- `st.metric` en 3 columnas: AUC, Gini, KS.
+- Precondición: `assert {'auc', 'gini', 'ks'}.issubset(metricas.keys())`.
+- Precondición: `assert all(0.0 <= v <= 1.0 for v in metricas.values())`.
+
+**`render_psi_temporal(eval_df: pd.DataFrame, modelo: Pipeline) -> None`**
+- Calcula score logístico por mes sobre `eval_df`.
+- Calcula PSI del mes 1 como base respecto a meses 2–24.
+- Plotea serie temporal de PSI con línea de umbral en 0.25.
+- Precondición: `assert 'month' in eval_df.columns`.
+- Precondición: `assert eval_df['month'].nunique() >= 2`.
+
+**`render_scatter_limites(eval_df: pd.DataFrame, y_prob: np.ndarray) -> None`**
+- Scatter: eje X = `credit_limit`, eje Y = probabilidad de default.
+- Color por `default_indicator`.
+- Precondición: `assert 'credit_limit' in eval_df.columns`.
+- Precondición: `assert len(eval_df) == len(y_prob)`.
+
+---
+
+### 5.3 — Pestaña 3: Modelo Dinámico
+
+**Archivo:** `gui/paginas/modelo_dinamico.py`
+
+#### Función `render(eval_df: pd.DataFrame, A: np.ndarray, B: np.ndarray, C: np.ndarray, K: np.ndarray, scale_params: dict) -> None`
+
+Precondición: `assert A.shape == (settings.N_STATES, settings.N_STATES)`.
+Precondición: `assert 'customer_id' in eval_df.columns`.
+
+Flujo:
+1. Selector de cliente (`st.selectbox` con IDs únicos de `eval_df`).
+2. Filtrar `cliente_df = eval_df[eval_df['customer_id'] == cliente_id]`.
+3. Ejecutar Kalman+LQR sobre `cliente_df` (sin guardar en DB, solo en memoria).
+4. Llamar componentes de visualización.
+
+> La simulación en esta pestaña es **en memoria**, sin escritura a disco ni SQLite.
+
+#### `gui/componentes/graficos_kalman.py`
+
+**`run_kalman_for_customer(df: pd.DataFrame, A, B, C, K, scale_params: dict) -> pd.DataFrame`**
+- Instancia `FiltroKalman` con `x0=zeros(3,1)`, `P0=eye(3)`.
+- Itera mes a mes: normaliza observaciones, ejecuta `kalman.step`.
+- Calcula `score_dinamico` y `limit_recomendado` por mes.
+- Retorna DataFrame con columnas: `month`, `x_hat_debt`, `x_hat_income`, `x_hat_util`, `p_trace`, `score_dinamico`, `limit_recomendado`.
+- Precondición: `assert len(df) > 0`.
+- Precondición: `assert all(c in scale_params for c in settings.STATES)`.
+
+**`render_estados_kalman(cliente_df: pd.DataFrame, kalman_df: pd.DataFrame) -> None`**
+- Tres subplots apilados: `outstanding_debt`, `income`, `utilization_rate`.
+- Cada subplot: valor real (línea continua) vs estado estimado x̂ (línea discontinua).
+- Usa `st.plotly_chart` con subplots sincronizados en eje X (mes).
+- Marca con punto rojo meses donde `default_indicator == 1`.
+- Precondición: `assert 'month' in cliente_df.columns and 'month' in kalman_df.columns`.
+- Precondición: `assert len(cliente_df) == len(kalman_df)`.
+
+**`render_limite_credito_dinamico(kalman_df: pd.DataFrame, cliente_df: pd.DataFrame) -> None`**
+- Gráfico de líneas: límite recomendado por LQR vs `credit_limit` real del eval_df.
+- Precondición: `assert 'limit_recomendado' in kalman_df.columns`.
+- Precondición: `assert 'credit_limit' in cliente_df.columns`.
+
+**`render_convergencia_traza(kalman_df: pd.DataFrame) -> None`**
+- Gráfico de línea de `p_trace` a lo largo de los 24 meses.
+- Añade anotación si la traza decrece monótonamente (convergencia).
+- Precondición: `assert 'p_trace' in kalman_df.columns`.
+- Precondición: `assert len(kalman_df) > 1`.
+
+---
+
+### 5.4 — Pestaña 4: Comparación de modelos
+
+**Archivo:** `gui/paginas/comparacion.py`
+
+#### Función `render(eval_df: pd.DataFrame, modelo: Pipeline, A, B, C, K, scale_params: dict) -> None`
+
+Precondición: `assert 'default_indicator' in eval_df.columns`.
+Precondición: `assert K.shape == (settings.N_CONTROL, settings.N_STATES)`.
+
+Flujo:
+1. Simular modelo logístico sobre `eval_df` → `log_results`.
+2. Simular modelo dinámico sobre `eval_df` → `dyn_results`.
+3. Calcular métricas de comparación.
+4. Llamar componentes de visualización.
+5. Renderizar shock simulator al final.
+
+> Las simulaciones son **en memoria** usando `simulate_logistic_model` y `simulate_dynamic_model` de `backtesting.py`. El resultado **no se persiste a SQLite**.
+
+#### `gui/componentes/graficos_comparacion.py`
+
+**`render_tabla_metricas_comparacion(log_metrics: dict, dyn_metrics: dict, reduccion: float) -> None`**
+- Tabla con filas: AUC, Gini, KS, Pérdida Total.
+- Columnas: Logístico | Dinámico | Δ.
+- `st.metric` para reducción de pérdida con `delta` positivo o negativo.
+- Precondición: `assert {'auc', 'gini', 'ks', 'perdida_total'}.issubset(log_metrics.keys())`.
+- Precondición: `assert {'auc', 'gini', 'ks', 'perdida_total'}.issubset(dyn_metrics.keys())`.
+
+**`render_perdida_acumulada_mensual(log_results: pd.DataFrame, dyn_results: pd.DataFrame) -> None`**
+- Calcula pérdida acumulada mes a mes para ambos modelos.
+- Gráfico de líneas doble: logístico vs dinámico.
+- Precondición: `assert 'loss' in log_results.columns and 'loss' in dyn_results.columns`.
+- Precondición: `assert 'month' in log_results.columns and 'month' in dyn_results.columns`.
+
+**`render_tasa_mora_mensual(log_results: pd.DataFrame, dyn_results: pd.DataFrame) -> None`**
+- Calcula % de clientes con `default_indicator == 1` por mes.
+- Gráfico de líneas doble.
+- Precondición: `assert 'default_indicator' in log_results.columns`.
+- Precondición: `assert 'month' in log_results.columns`.
+
+**`render_estabilidad_limites(dyn_results: pd.DataFrame) -> None`**
+- Calcula desviación estándar de `limit_recomendado` por cliente a lo largo del tiempo.
+- Histograma de estabilidad; cuanto menor la desviación, más estable la política.
+- Precondición: `assert 'limit_recomendado' in dyn_results.columns`.
+- Precondición: `assert 'customer_id' in dyn_results.columns`.
+
+#### `gui/componentes/shock_simulator.py`
+
+**`render_shock_simulator(eval_df: pd.DataFrame, modelo: Pipeline, A, B, C, K, scale_params: dict) -> None`**
+
+Componente interactivo que recalcula el impacto de un shock macroeconómico.
+
+Controles Streamlit:
+- `st.slider("Incremento de deuda (%)", 0, 50, 0)` → `shock_debt`.
+- `st.slider("Caída de ingresos (%)", 0, 40, 0)` → `shock_income`.
+- `st.button("Aplicar shock")`.
+
+**`_aplicar_shock(df: pd.DataFrame, shock_debt: float, shock_income: float) -> pd.DataFrame`**
+- Crea copia de `df`.
+- Multiplica `outstanding_debt` por `(1 + shock_debt / 100)`.
+- Multiplica `income` por `(1 - shock_income / 100)`.
+- Recalcula `utilization_rate = outstanding_debt / credit_limit`, saturado en [0, 1].
+- Precondición: `assert 0 <= shock_debt <= 50`.
+- Precondición: `assert 0 <= shock_income <= 40`.
+- Postcondición: `assert len(df_shock) == len(df)`.
+
+**Flujo al activar shock:**
+1. Llama `_aplicar_shock` → `df_shock`.
+2. Simula ambos modelos sobre `df_shock` → `log_shock`, `dyn_shock`.
+3. Muestra delta de pérdida total: `Δ loss logístico` y `Δ loss dinámico`.
+4. Gráfico de barras comparando pérdida total sin shock vs con shock para ambos modelos.
+5. Mensaje de alerta si el modelo dinámico absorbe mejor el shock (pérdida relativa menor).
+- Precondición: `assert shock_debt >= 0 and shock_income >= 0`.
+- Precondición: `assert isinstance(df, pd.DataFrame) and not df.empty`.
+
+---
+
+### 5.5 — Actualización de `settings.py`
+
+Añadir las rutas nuevas al objeto `Settings`:
+
+```python
+EVAL_TRANSACTIONS_PATH: Path = DB_PATH / "eval_transactions.csv"
+EVAL_FEATURES_PATH: Path = DB_PATH / "eval_features.csv"
+EVAL_SEED: int = 43
+```
 
 ---
 
 ## Tests pytest
 
-**Archivos:** `tests/conftest.py` + archivos por módulo  
-**EARS:** T01–T04
+**Archivos:** `tests/conftest.py` + archivos por módulo
 
 ### `conftest.py`
-- Fixtures reutilizables: `df_raw`, `df_features`, `A_mat`, `B_mat`, `C_mat`, `kalman_instance`, `modelo_logistico`.
-- Fixture `db_tmp`: base de datos SQLite temporal en `tmp_path`.
-- `SEED = 42` en fixture de datos sintéticos.
+
+- Fixtures: `df_raw`, `df_features`, `df_eval`, `A_mat`, `B_mat`, `C_mat`, `K_mat`, `kalman_instance`, `modelo_logistico`.
+- Fixture `db_tmp`: SQLite temporal en `tmp_path`.
+- Fixture `customer_builder`: instancia de `CustomerBuilder` configurada.
+- Fixture `customer_director`: instancia de `CustomerDirector`.
+- `SEED = 42` en fixtures de datos de entrenamiento; `SEED = 43` en fixtures de evaluación.
+
+### `test_builder.py`
+
+- Verifica que `CustomerBuilder` lanza `AssertionError` si `build()` se llama sin configurar atributos.
+- Verifica que `build()` retorna exactamente 24 dicts.
+- Verifica que cada dict contiene las columnas requeridas (`customer_id`, `month`, `income`, etc.).
+- Verifica que `CustomerDirector.construir_dataset(42)` produce 12 000 filas.
+- Verifica distribución de arquetipos: `good ≈ 200`, `recurrent ≈ 125`, etc.
+- Verifica que con seed distinto el resultado es diferente.
 
 ### `test_features.py`
-- Verifica que `ratio_deuda_ingreso_ma` tenga ventana de 3 meses correcta.
-- Verifica que `tendencia_utilizacion` sea 0.0 cuando solo hay 1 punto.
-- Verifica que `income` NaN sea imputado antes de calcular ratio.
-- Verifica que `customer_id` y `month` no cambien tras el pipeline.
-- Verifica que `db/features_dinamicos.csv` se crea con las columnas esperadas.
+
+- Verifica que `ratio_deuda_ingreso_ma` usa ventana de 3 meses correcta.
+- Verifica que `tendencia_utilizacion` es 0.0 cuando hay 1 solo punto.
+- Verifica que `income` NaN se imputa antes de calcular ratio.
+- Verifica que `customer_id` y `month` no cambian tras el pipeline.
+- Verifica que `db/features_dinamicos.csv` existe con columnas esperadas.
+- Verifica que `generar_features` produce el mismo resultado para `eval_transactions.csv`.
 
 ### `test_kalman.py`
-- Verifica que tras `paso()` el estado `x_hat` tenga forma `(4, 1)`.
-- Verifica que si `y_t` contiene NaN, el estado se propaga sin actualización (solo predicción).
+
+- Verifica que `paso()` produce `x_hat` con forma `(3, 1)`.
+- Verifica que con `y_t` con NaN el estado se propaga sin actualización.
 - Verifica que `P` permanece semidefinida positiva tras varios pasos.
-- **Si `P` tiene autovalores negativos → el test FALLA con mensaje descriptivo** (EARS-T04).
+- Si `P` tiene autovalores negativos → el test **FALLA** con mensaje descriptivo.
 - Verifica convergencia: tras 20 pasos con sistema estable, `trace(P)` decrece.
 
 ### `test_controlador.py`
-- Verifica que `K` tiene forma `(1, 4)`.
+
+- Verifica que `K` tiene forma `(1, 3)`.
 - Verifica que `limit_recomendado` está en `[0, credit_limit_max]`.
-- Verifica que con `Q_lqr[3,3]` grande el límite recomendado sea menor que con `Q_lqr[3,3]` pequeño.
 - Verifica que `score_dinamico` ∈ `[0, 1]`.
+- Verifica que con Q_lqr de alta penalización en deuda el límite recomendado sea conservador.
 
 ### `test_logistico.py`
+
 - Verifica que `predict_proba` retorna float en `[0, 1]`.
 - Verifica que el modelo no se reentrena si el `.pkl` ya existe.
 - Verifica que métricas `auc`, `gini`, `ks` están en rangos válidos.
 - Verifica que el pipeline incluye `scaler` y `clf`.
 
-### `test_integracion.py` (EARS-T03)
-- Ejecuta el pipeline completo: generación → features → matrices → Kalman → LQR → backtesting.
+### `test_integracion.py`
+
+- Marca: `@pytest.mark.slow`.
+- Ejecuta pipeline completo: generación (via `CustomerDirector`) → features → matrices → Kalman → LQR → backtesting.
 - Verifica que `db/comparacion_modelos.json` existe al final.
-- Verifica que la tabla `decisions` de SQLite tiene exactamente `500 × 24 = 12 000` filas.
-- Verifica métricas mínimas: AUC logístico > 0.6, pérdida dinámica calculada.
-- El test puede tardar; usar `@pytest.mark.slow` para poder excluirlo con `-m "not slow"`.
+- Verifica que tabla `decisions` tiene exactamente 12 000 filas.
+- Verifica AUC logístico > 0.6.
+- Verifica que `eval_features.csv` existe y tiene misma estructura que `features_dinamicos.csv`.
+- Verifica que el logger no lanza excepciones durante la ejecución completa.
 
 ---
 
 ## Mapa de dependencias entre artefactos
 
 ```
+modelos/dominio/customer_builder.py + customer_director.py
+    → (usado por) scripts/transacciones.py
+
 scripts/transacciones.py
-    → db/raw_transactions.csv
+    → db/raw_transactions.csv   (SEED=42)
+    → db/eval_transactions.csv  (SEED=43)
 
 modelos/features/pipeline.py  ← db/raw_transactions.csv
     → db/features_dinamicos.csv
+
+modelos/features/pipeline.py  ← db/eval_transactions.csv
+    → db/eval_features.csv
 
 modelos/estatico/logistico.py  ← db/features_dinamicos.csv
     → db/modelo_logistico.pkl
@@ -831,15 +895,16 @@ modelos/estatico/logistico.py  ← db/features_dinamicos.csv
 
 modelos/dinamico/identificacion.py  ← db/features_dinamicos.csv
     → db/matrices_sistema.npz
+    → db/matrices_sistema.json   (scale params)
 
-modelos/dinamico/kalman.py  ← db/matrices_sistema.npz
-    (no escribe archivo; instanciado en runtime)
+modelos/dinamico/kalman.py  ← matrices_sistema.npz
+    (instanciado en runtime; sin artefacto de salida propio)
 
-modelos/dinamico/controlador.py  ← matrices_sistema.npz (A, B)
-    (no escribe archivo; instanciado en runtime)
+modelos/dinamico/controlador.py  ← matrices_sistema.npz
+    (instanciado en runtime; sin artefacto de salida propio)
 
 gui/infraestructura/db.py
-    → db/credito.db (esquema)
+    → db/credito.db  (esquema)
 
 modelos/evaluacion/backtesting.py
     ← db/features_dinamicos.csv
@@ -847,12 +912,26 @@ modelos/evaluacion/backtesting.py
     ← db/matrices_sistema.npz
     ← db/credito.db
     → db/comparacion_modelos.json
-    → db/credito.db (pobla tablas)
+    → db/credito.db  (pobla tablas)
 
-gui/ (todas las rutas)
-    ← db/credito.db
+utils/logger.py
+    ← (importado por todos los módulos)
+    (sin artefacto de salida; escribe logs a consola / archivo)
+
+gui/app.py
+    ← db/modelo_logistico.pkl
+    ← db/matrices_sistema.npz + matrices_sistema.json
+    ← db/eval_features.csv   → st.session_state['eval_df']
     ← db/comparacion_modelos.json
-    ← db/metricas_baseline.json
+
+gui/paginas/*.py
+    ← st.session_state['eval_df']
+    ← modelos cargados en memoria via app.py
+    (sin artefactos de salida; render en Streamlit)
+
+gui/componentes/shock_simulator.py
+    ← st.session_state['eval_df']  (copia modificada en memoria)
+    (sin artefactos de salida)
 ```
 
 ---
@@ -863,22 +942,27 @@ Un agente puede marcar el proyecto como **completado** cuando se cumplan **todos
 
 | # | Criterio | Verificación |
 |---|---|---|
-| 1 | `scripts/transacciones.py --force` genera CSV con 12 000 filas | `wc -l db/raw_transactions.csv` = 12 001 |
-| 2 | `db/features_dinamicos.csv` contiene las 3 columnas de features nuevas | `head -1 db/features_dinamicos.csv` |
-| 3 | `db/modelo_logistico.pkl` existe y AUC > 0.6 | `db/metricas_baseline.json` |
-| 4 | `db/matrices_sistema.npz` tiene claves A, B, C | `np.load('db/matrices_sistema.npz').files` |
-| 5 | MSE de reconstrucción < 0.05 | Log de `identificacion.py` |
-| 6 | Filtro de Kalman converge sin autovalores negativos | `pytest tests/test_kalman.py` |
-| 7 | Score dinámico ∈ [0, 1] para todos los clientes | `pytest tests/test_controlador.py` |
-| 8 | `db/comparacion_modelos.json` contiene Gini, KS, AUC, pérdida de ambos modelos | Inspección JSON |
-| 9 | `pytest tests/` pasa con cobertura ≥ 80% en `modelos/` | `pytest --cov=modelos` |
-| 10 | Dashboard cliente accesible en `/cliente` con selector, gauge, gráfico, tabla | Inspección visual |
-| 11 | Dashboard banco accesible en `/banco` con panel métricas, PSI, autovalores, contrafactual | Inspección visual |
-| 12 | Ninguna función supera 60 líneas | `grep -rn "def " modelos/ gui/` + conteo manual |
-| 13 | Toda variable tiene tipo explícito | Revisión de código |
-| 14 | Mínimo 2 aserciones por función | Revisión de código |
-| 15 | `docs/tareas.md` refleja estado actualizado de todas las tareas | Inspección |
-
----
-
-*Fin del plan de implementación.*
+| 1 | `CustomerBuilder.build()` genera 24 filas correctas por cliente | `pytest tests/test_builder.py` |
+| 2 | `CustomerDirector.construir_dataset(42)` genera 12 000 filas con distribución de arquetipos correcta | `pytest tests/test_builder.py` |
+| 3 | `db/raw_transactions.csv` tiene 12 000 filas (SEED=42) | `wc -l db/raw_transactions.csv` = 12 001 |
+| 4 | `db/eval_transactions.csv` tiene 12 000 filas (SEED=43) | `wc -l db/eval_transactions.csv` = 12 001 |
+| 5 | `db/features_dinamicos.csv` y `db/eval_features.csv` contienen las 3 columnas de features nuevas | `head -1 db/*_features*.csv` |
+| 6 | `db/modelo_logistico.pkl` existe y AUC > 0.6 | `db/metricas_baseline.json` |
+| 7 | `db/matrices_sistema.npz` tiene claves A (3×3), B (3×1), C (2×3) | `np.load('db/matrices_sistema.npz').files` + shape check |
+| 8 | Filtro de Kalman converge sin autovalores negativos en P | `pytest tests/test_kalman.py` |
+| 9 | Score dinámico ∈ [0, 1] para todos los clientes | `pytest tests/test_controlador.py` |
+| 10 | `db/comparacion_modelos.json` contiene Gini, KS, AUC y pérdida de ambos modelos | Inspección JSON |
+| 11 | `modelos/evaluacion/` (sin typo) existe y todos los imports funcionan | `python -c "from modelos.evaluacion.backtesting import run_backtesting"` |
+| 12 | `utils/logger.py` configurable una vez; todos los módulos lo usan | `grep -r "get_logger" modelos/ gui/ utils/` |
+| 13 | `streamlit run main.py` lanza sin errores y carga las 4 pestañas | Inspección visual |
+| 14 | Pestaña "Análisis Descriptivo" muestra resumen estadístico, histogramas y alertas del eval_df | Inspección visual |
+| 15 | Pestaña "Modelo Estático" muestra AUC-ROC, KS, Gini, PSI y scatter de eval_df | Inspección visual |
+| 16 | Pestaña "Modelo Dinámico" muestra estados Kalman estimados vs reales para cliente seleccionado | Inspección visual |
+| 17 | Pestaña "Comparación" muestra tabla de métricas side-by-side y simulación de shock funcional | Inspección visual |
+| 18 | Shock simulator recalcula pérdidas de ambos modelos al activarse | Inspección visual + prueba interactiva |
+| 19 | `pytest tests/ -m "not slow"` pasa sin errores | Salida pytest |
+| 20 | `pytest tests/ --cov=modelos --cov=utils` alcanza cobertura ≥ 80% | `pytest --cov` |
+| 21 | Ninguna función supera 60 líneas | Análisis estático |
+| 22 | Toda variable tiene tipo explícito | Revisión de código / mypy |
+| 23 | Mínimo 2 aserciones por función | Revisión de código |
+| 24 | `docs/tareas.md` refleja estado actualizado de todas las tareas | Inspección |
