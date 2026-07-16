@@ -3,8 +3,8 @@
 !.github/
 !.github/**
 
-!scripts/
-!scripts/**
+!utils/
+!utils/**
 
 !docs/
 !docs/**
@@ -25,4 +25,3 @@
 !README.md
 !AGENTS.md
 !requirements.txt
-!main.py

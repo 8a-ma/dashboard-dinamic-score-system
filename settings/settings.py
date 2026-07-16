@@ -8,6 +8,7 @@ class Settings:
     TEST_MONTHS: int = 6
 
     PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
+    CONFIG_LOG_PATH: Path = PROJECT_ROOT / "settings" / "logging.yaml"
     DB_PATH: Path = PROJECT_ROOT / "db"
 
     RAW_TRANSACTIONS_PATH: Path = DB_PATH / "raw_transactions.csv"
