@@ -10,7 +10,7 @@ class CustomerBuilder:
     _credit_limit: float
 
     def __init__(self):
-        self._DISPATCH: dict = {
+        self._DISPATCH: dict[str, callable[int, float], tuple[dict, float]] = {
             "good": self._build_month_good,
             "recurrent": self._build_month_recurrent,
             "over": self._build_month_over,
@@ -18,28 +18,28 @@ class CustomerBuilder:
             "low": self._build_month_low
         }
 
-    def with_customer_id(self, customer_id: str):
+    def with_customer_id(self, customer_id: str) -> 'CustomerBuilder':
         assert customer_id[0] == "C"
 
         self._customer_id = customer_id
 
         return self
     
-    def with_archetype(self, archetype: str):
+    def with_archetype(self, archetype: str) -> 'CustomerBuilder':
         assert archetype in ARCHETYPE_PARAMS
 
         self._archetype = archetype
 
         return self
 
-    def with_base_income(self, base_income: float):
+    def with_base_income(self, base_income: float) -> 'CustomerBuilder':
         assert base_income >= 0
 
         self._base_income = base_income
 
         return self
 
-    def with_credit_limit(self, credit_limit: float):
+    def with_credit_limit(self, credit_limit: float) -> 'CustomerBuilder':
         assert credit_limit >= 0
 
         self._credit_limit = credit_limit
@@ -147,7 +147,9 @@ class CustomerBuilder:
         trend: float = 1.0
 
         if month >= 17:
-            trend += (month - 16) * float(np.random.uniform(ARCHETYPE_PARAMS[self._archetype]['income_growth_min'], ARCHETYPE_PARAMS[self._archetype]['income_growth_max']))
+            trend -= (month - 16) * np.random.uniform(ARCHETYPE_PARAMS[self._archetype]["income_decay_min"], ARCHETYPE_PARAMS[self._archetype]["income_decay_max"])
+        
+        trend = max(trend, 0.1)
 
         income: float = self._base_income * trend * season * float(np.random.normal(1, ARCHETYPE_PARAMS[self._archetype]['income_std']))
         utilization: float = self._clip(float(np.random.normal(
@@ -178,7 +180,7 @@ class CustomerBuilder:
         assert 1 <= month <= settings.MONTHS
         assert current_limit > 0.0
 
-        income: float = self._base_income * float(np.random.normal(1, ARCHETYPE_PARAMS[self._archetype]['income_std']))
+        income: float = self._base_income * float(np.random.uniform(ARCHETYPE_PARAMS[self._archetype]['income_factor_min'], ARCHETYPE_PARAMS[self._archetype]['income_factor_max']))
 
         if month <= 15:
             utilization: float = self._clip(float(np.random.normal(
@@ -223,13 +225,7 @@ class CustomerBuilder:
 
         if active:
             income: float = self._base_income * float(np.random.normal(1, ARCHETYPE_PARAMS[self._archetype]['income_std']))
-            utilization: float = self._clip(float(np.random.normal(
-                    ARCHETYPE_PARAMS[self._archetype]['utilization_mean'],
-                    ARCHETYPE_PARAMS[self._archetype]['utilization_std']
-                )),
-                ARCHETYPE_PARAMS[self._archetype]['utilization_min'],
-                ARCHETYPE_PARAMS[self._archetype]['utilization_max']
-            )
+            utilization: float = np.random.uniform(ARCHETYPE_PARAMS[self._archetype]["utilization_min"], ARCHETYPE_PARAMS[self._archetype]["utilization_max"])
             debt: float = utilization * current_limit
             payment: float = debt * float(np.random.uniform(ARCHETYPE_PARAMS[self._archetype]['payment_factor_min'], ARCHETYPE_PARAMS[self._archetype]['payment_factor_max']))
 

@@ -10,10 +10,14 @@ class CustomerDirector:
         self._builder = builder
     
     def _calculate_composition(self, n: int) -> dict[str, int]:
-        composition: dict = {}
+        composition: dict[str, int] = {}
 
         for key, value in ARCHETYPE_COMPOSITION.items():
             composition[key] = int(value * n)
+
+        remainder: int = n - sum(composition.values())
+
+        composition[list(composition.keys())[-1]] += remainder
 
         assert sum(composition.values()) == n
 
