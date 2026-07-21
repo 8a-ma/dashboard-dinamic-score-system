@@ -25,7 +25,6 @@ def inicializar_db(path: Path) -> sqlite3.Connection:
             utilization_rate  REAL,
             outstanding_debt  REAL,
             payment_amount    REAL,
-            days_in_default   INTEGER,
             num_transactions  INTEGER,
             transaction_vol   REAL,
             default_indicator INTEGER,
