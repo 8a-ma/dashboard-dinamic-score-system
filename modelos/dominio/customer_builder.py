@@ -1,3 +1,4 @@
+import logging
 import numpy as np
 from settings.settings import settings
 from modelos.dominio.arquetipos import ARCHETYPE_PARAMS
@@ -52,19 +53,27 @@ class CustomerBuilder:
         assert self._base_income is not None
         assert self._credit_limit is not None
 
+
         rows: list[dict[str, object]] = []
         current_limit: float = self._credit_limit
+        logging.debug(f'build started - customer_id={self._customer_id} archetype={self._archetype} months={settings.MONTHS}')
 
-        for month in range(1, settings.MONTHS + 1):
-            row, current_limit = self._DISPATCH[self._archetype](month, current_limit)
-            row["customer_id"] = self._customer_id
-            row["month"] = month
+        try:
+            for month in range(1, settings.MONTHS + 1):
+                row, current_limit = self._DISPATCH[self._archetype](month, current_limit)
+                row["customer_id"] = self._customer_id
+                row["month"] = month
+                row = self._apply_exogenous_shock(row)
 
-            rows.append(row)
-        
-        assert len(rows) == settings.MONTHS
+                rows.append(row)
+            
+            assert len(rows) == settings.MONTHS
 
-        return rows
+            logging.debug(f'build completed - customer_id={self._customer_id} rows={len(rows)}')
+            
+            return rows
+        except AssertionError as e:
+            logging.error(f'build failed - customer_id={self._customer_id} reason={e}')
     
     def _clip(self, v: float, a: float, b: float) -> float:
         assert a <= b, f"a={a} debe ser ≤ b={b}"
@@ -254,3 +263,11 @@ class CustomerBuilder:
             "transaction_volatility": np.nan,
             "default_indicator": 0,
         }, current_limit
+    
+    def _apply_exogenous_shock(self, row: dict) -> dict:
+        if np.random.rand() < ARCHETYPE_PARAMS[self._archetype]['shock_prob']:
+            windfall = np.random.uniform(0.1, 0.5) * row["outstanding_debt"]
+            row["outstanding_debt"] = max(0, row["outstanding_debt"] - windfall)
+            row["income"] = row["income"] * np.random.uniform(1.05, 1.20)
+
+        return row

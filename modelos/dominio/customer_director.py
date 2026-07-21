@@ -1,8 +1,9 @@
+import logging
 import numpy as np
 import pandas as pd
 from settings.settings import settings
-from modelos.dominio.arquetipos import ARCHETYPE_COMPOSITION
 from modelos.dominio.customer_builder import CustomerBuilder
+from modelos.dominio.arquetipos import ARCHETYPE_COMPOSITION
 
 
 class CustomerDirector:
@@ -24,35 +25,44 @@ class CustomerDirector:
         return composition
     
     def build_dataset(self, seed: int = 42) -> pd.DataFrame:
-        assert seed > 0
-        np.random.seed(seed)
+        try:
+            assert seed > 0
+            np.random.seed(seed)
 
-        composition: dict[str, int] = self._calculate_composition(settings.N_CUSTOMERS)
-        types: list[str] = []
+            composition: dict[str, int] = self._calculate_composition(settings.N_CUSTOMERS)
 
-        for type, quant in composition.items():
-            types += [type] * quant
-        
-        np.random.shuffle(types)
+            logging.info(f'build_dataset started - composition={composition} seed={seed} n_customers={settings.N_CUSTOMERS}')
 
-        rows: list[dict[str, object]] = []
+            types: list[str] = []
 
-        for idx, customer_type in enumerate(types, start=1):
-            base_income: float = float(np.random.uniform(1800, 9000))
+            for type, quant in composition.items():
+                types += [type] * quant
+            
+            np.random.shuffle(types)
 
-            rows.extend(
-                self._builder \
-                .with_archetype(customer_type) \
-                .with_customer_id(f"C{idx:04d}") \
-                .with_base_income(base_income) \
-                .with_credit_limit(base_income * float(np.random.uniform(2.0, 4.5))) \
-                .build()
-            )
+            rows: list[dict[str, object]] = []
 
-        df: pd.DataFrame = pd.DataFrame(rows)
+            for idx, customer_type in enumerate(types, start=1):
+                base_income: float = float(np.random.uniform(1800, 9000))
 
-        assert len(df) == settings.N_CUSTOMERS * settings.MONTHS
+                rows.extend(
+                    self._builder \
+                    .with_archetype(customer_type) \
+                    .with_customer_id(f"C{idx:04d}") \
+                    .with_base_income(base_income) \
+                    .with_credit_limit(base_income * float(np.random.uniform(2.0, 4.5))) \
+                    .build()
+                )
+            
+            logging.info(f'build_dataset completed - rows={len(rows)} composition={composition}')
 
-        return df
+            df: pd.DataFrame = pd.DataFrame(rows)
+
+            assert len(df) == settings.N_CUSTOMERS * settings.MONTHS
+
+            return df
+
+        except AssertionError as e:
+            logging.error(f'build_dataset failed - reason={e}')
 
         
