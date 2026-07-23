@@ -5,13 +5,13 @@ from modelos.dominio.arquetipos import ARCHETYPE_PARAMS
 
 
 class CustomerBuilder:
-    _customer_id: str
-    _archetype: str
-    _base_income: float
-    _credit_limit: float
-
     def __init__(self):
-        self._DISPATCH: dict[str, callable[int, float], tuple[dict, float]] = {
+        self._customer_id: str | None = None
+        self._archetype: str | None = None
+        self._base_income: float | None = None
+        self._credit_limit: float | None = None
+
+        self._DISPATCH: dict[str, callable[[int, float], tuple[dict, float]]] = {
             "good": self._build_month_good,
             "recurrent": self._build_month_recurrent,
             "over": self._build_month_over,
@@ -59,7 +59,7 @@ class CustomerBuilder:
         previous_row: dict | None = None
 
         current_limit: float = self._credit_limit
-        logging.debug(f'build started - customer_id={self._customer_id} archetype={self._archetype} months={settings.MONTHS}')
+        logging.debug(f'{self.__class__.__name__}.build started - customer_id={self._customer_id} archetype={self._archetype} months={settings.MONTHS}')
 
         try:
             for month in range(1, settings.MONTHS + 1):
@@ -76,11 +76,11 @@ class CustomerBuilder:
             
             assert len(rows) == settings.MONTHS
 
-            logging.debug(f'build completed - customer_id={self._customer_id} rows={len(rows)}')
+            logging.debug(f'{self.__class__.__name__}.build completed - customer_id={self._customer_id} rows={len(rows)}')
             
             return rows
         except AssertionError as e:
-            logging.error(f'build failed - customer_id={self._customer_id} reason={e}')
+            logging.error(f'{self.__class__.__name__}.build failed - customer_id={self._customer_id} reason={e}')
     
     def _clip(self, v: float, a: float, b: float) -> float:
         assert a <= b, f"a={a} debe ser ≤ b={b}"
@@ -272,9 +272,17 @@ class CustomerBuilder:
         }, current_limit
     
     def _apply_exogenous_shock(self, row: dict) -> dict:
-        if np.random.rand() < ARCHETYPE_PARAMS[self._archetype]['shock_prob']:
-            windfall = np.random.uniform(0.1, 0.5) * row["outstanding_debt"]
-            row["outstanding_debt"] = max(0, row["outstanding_debt"] - windfall)
+        assert "outstanding_debt" in row
+        assert "income" in row
+        
+        if np.random.rand() >= ARCHETYPE_PARAMS[self._archetype]['shock_prob']:
+            return row
+        
+        if row["outstanding_debt"] > 0:
+            windfall: float = np.random.uniform(0.1, 0.5) * row["outstanding_debt"]
+            row["outstanding_debt"] = max(0.0, row["outstanding_debt"] - windfall)
+
+        if row["income"] is not None and not np.isnan(row["income"]):
             row["income"] = row["income"] * np.random.uniform(1.05, 1.20)
 
         return row

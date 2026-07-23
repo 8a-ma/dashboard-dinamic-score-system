@@ -8,9 +8,14 @@ from modelos.dominio.arquetipos import ARCHETYPE_COMPOSITION
 
 class CustomerDirector:
     def __init__(self, builder: CustomerBuilder):
-        self._builder = builder
+        assert builder is not None
+
+        self._builder: CustomerBuilder = builder
     
     def _calculate_composition(self, n: int) -> dict[str, int]:
+        assert n > 0
+        assert n == settings.N_CUSTOMERS
+
         composition: dict[str, int] = {}
 
         for key, value in ARCHETYPE_COMPOSITION.items():
@@ -31,7 +36,7 @@ class CustomerDirector:
 
             composition: dict[str, int] = self._calculate_composition(settings.N_CUSTOMERS)
 
-            logging.info(f'build_dataset started - composition={composition} seed={seed} n_customers={settings.N_CUSTOMERS}')
+            logging.info(f'{self.__class__.__name__}.build_dataset started - composition={composition} seed={seed} n_customers={settings.N_CUSTOMERS}')
 
             types: list[str] = []
 
@@ -54,7 +59,7 @@ class CustomerDirector:
                     .build()
                 )
             
-            logging.info(f'build_dataset completed - rows={len(rows)} composition={composition}')
+            logging.info(f'{self.__class__.__name__}.build_dataset completed - rows={len(rows)} composition={composition}')
 
             df: pd.DataFrame = pd.DataFrame(rows)
 
@@ -63,6 +68,8 @@ class CustomerDirector:
             return df
 
         except AssertionError as e:
-            logging.error(f'build_dataset failed - reason={e}')
+            logging.error(f'{self.__class__.__name__}.build_dataset failed - reason={e}')
+
+            return pd.DataFrame()
 
         

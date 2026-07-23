@@ -3,7 +3,7 @@ disable_existing_loggers: false
 
 formatters:
   standard:
-    format: '%(asctime)s [%(levelname)s] - %(name)s (%(process)s)  %(message)s'
+    format: '%(asctime)s [%(levelname)s] - %(name)s.%(funcName)s (%(process)s)  %(message)s'
     datefmt: '%Y-%m-%dT%H:%M:%SZ'
     encoding: 'utf-8'
 
