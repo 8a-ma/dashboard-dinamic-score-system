@@ -54,7 +54,10 @@ class CustomerBuilder:
         assert self._credit_limit is not None
 
 
+        drift_start, drift_end, drift_intensity = self._init_drift_params()
         rows: list[dict[str, object]] = []
+        previous_row: dict | None = None
+
         current_limit: float = self._credit_limit
         logging.debug(f'build started - customer_id={self._customer_id} archetype={self._archetype} months={settings.MONTHS}')
 
@@ -63,9 +66,13 @@ class CustomerBuilder:
                 row, current_limit = self._DISPATCH[self._archetype](month, current_limit)
                 row["customer_id"] = self._customer_id
                 row["month"] = month
+
+                row = self._apply_autocorrelation(row, previous_row)
+                row = self._apply_segment_drift(row, month, drift_start, drift_end, drift_intensity)
                 row = self._apply_exogenous_shock(row)
 
                 rows.append(row)
+                previous_row = row.copy()
             
             assert len(rows) == settings.MONTHS
 
@@ -269,5 +276,65 @@ class CustomerBuilder:
             windfall = np.random.uniform(0.1, 0.5) * row["outstanding_debt"]
             row["outstanding_debt"] = max(0, row["outstanding_debt"] - windfall)
             row["income"] = row["income"] * np.random.uniform(1.05, 1.20)
+
+        return row
+
+    def _init_drift_params(self) -> tuple[int, int, float]:
+        drift_start: int = int(np.random.randint(4, 18))
+        drift_duration: int = int(np.random.randint(3, 7))
+        drift_end: int = min(drift_start + drift_duration, settings.MONTHS)
+        drift_intensity: float = float(np.random.uniform(0.05, 0.25))
+
+        assert 1 <= drift_start < drift_end <= settings.MONTHS
+        assert 0.0 < drift_intensity <= 0.25
+
+        return drift_start, drift_end, drift_intensity
+    
+    def _apply_autocorrelation(self, row: dict, previous_row: dict | None, rho: float = 0.25) -> dict:
+        assert 0.0 <= rho <= 1.0
+        assert "outstanding_debt" in row
+
+        if previous_row is None: return row
+
+        row["outstanding_debt"] = rho * previous_row["outstanding_debt"] + (1 - rho) * row['outstanding_debt']
+
+        prev_debt: float = max(previous_row['outstanding_debt'], 1.0)
+        payment_ratio: float = previous_row['payment_amount'] / prev_debt
+
+        if payment_ratio > 0.90:
+            reduction: float = np.random.uniform(0.01, 0.05) * row['outstanding_debt']
+            row['outstanding_debt'] = max(0.0, row['outstanding_debt'] - reduction)
+        
+        elif payment_ratio < 0.30:
+            penalty: float = np.random.uniform(0.01, 0.04) * row['outstanding_debt']
+            row['outstanding_debt'] = row['outstanding_debt'] + penalty
+        
+        if row['credit_limit'] > 0.0:
+            row['utilization_rate'] = self._clip(row['outstanding_debt'] / row['credit_limit'], 0.0, 1.0)
+
+        assert row['outstanding_debt'] >= 0.0
+        assert 0.0 <= row['utilization_rate'] <= 1.0
+
+        return row
+
+    def _apply_segment_drift(self, row: dict, month: int, drift_start: int, drift_end: int, drift_intensity: float) -> dict:
+        assert drift_start < drift_end
+        assert 0.0 <= drift_intensity <= 1.0
+        assert "outstanding_debt" in row and "payment_amount" in row
+
+        if not (drift_start <= month <= drift_end): return row
+
+        window_size: int = max(drift_end - drift_start, 1)
+        progress: float = (month - drift_start) / window_size
+        alpha: float = drift_intensity * float(np.sin(np.pi * progress))
+
+        row['outstanding_debt'] = row["outstanding_debt"] * (1.0 + alpha * float(np.random.uniform(0.03, 0.12)))
+        row['payment_amount'] = max(0.0, row["payment_amount"] * (1.0 + alpha * float(np.random.uniform(0.05, 0.20))))
+
+        if row['credit_limit'] > 0.0:
+            row['utilization_rate'] = self._clip(row['outstanding_debt'] / row['credit_limit'], 0.0, 1.0)
+
+        assert row['outstanding_debt'] >= 0.0
+        assert row['payment_amount'] >= 0.0
 
         return row
