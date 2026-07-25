@@ -18,8 +18,6 @@ def load_csv_to_df(input_file: Path) -> pd.DataFrame:
 
     df: pd.DataFrame = pd.read_csv(input_file)
 
-    assert not df.empty()
-
     return df
 
 

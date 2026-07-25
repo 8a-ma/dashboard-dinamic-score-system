@@ -1,3 +1,5 @@
+import sys
+import logging
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -18,10 +20,14 @@ class ModelPipelineManager:
         self.metrics_path = metrics_path
 
     def _load_features(self) -> pd.DataFrame:
+        logging.debug(f'{self.__class__.__name__}.{sys._getframe().f_code.co_name} started - path={self.features_path}')
+
         df: pd.DataFrame = load_csv_to_df(self.features_path)
-        assert not df.empty()
+        assert not df.empty
 
         df[settings.FEATURE_COLUMNS] = df[settings.FEATURE_COLUMNS].fillna(0.0)
+
+        logging.debug(f'{self.__class__.__name__}.{sys._getframe().f_code.co_name} completed - rows={len(df)} columns={df.columns}')
 
         return df
 
@@ -34,11 +40,15 @@ class ModelPipelineManager:
         assert 'scaler' in pipeline.named_steps
         assert 'clf' in pipeline.named_steps
 
+        logging.debug(f'{self.__class__.__name__}.{sys._getframe().f_code.co_name} completed - steps={pipeline.named_steps}')
+
         return pipeline
 
     def _temporal_split(self, df: pd.DataFrame, test_months: int) -> tuple[pd.DataFrame, pd.DataFrame]:
         assert 'month' in df.columns and 'customer_id' in df.columns
         assert test_months > 0
+
+        logging.debug(f'{self.__class__.__name__}.{sys._getframe().f_code.co_name} started - test_months={test_months}')
     
         max_month: int = int(df['month'].max())
         cutoff: int = max_month - test_months
@@ -47,12 +57,16 @@ class ModelPipelineManager:
         test: pd.DataFrame = df[df['month'] > cutoff].copy()
     
         assert len(train) > 0 and len(test) > 0
+
+        logging.debug(f'{self.__class__.__name__}.{sys._getframe().f_code.co_name} completed - train_rows={len(train)} test_rows={len(test)}')
     
         return train, test
 
     def _calculate_metrics(self, y_true: np.ndarray, y_prob: np.ndarray) -> dict[str, float]:
         assert len(y_true) == len(y_prob)
         assert len(y_true) > 0
+
+        logging.debug(f'{self.__class__.__name__}.{sys._getframe().f_code.co_name} started')
 
         auc: float = float(roc_auc_score(y_true, y_prob))
         gini: float = 2.0 * auc - 1.0
@@ -70,11 +84,15 @@ class ModelPipelineManager:
         }
 
         assert 0.0 <= metrics['auc'] <= 1.0
+
+        logging.debug(f'{self.__class__.__name__}.{sys._getframe().f_code.co_name} completed - auc={auc}, gini={gini} ks={ks}')
         
         return metrics
 
     def train(self) -> tuple[Pipeline, dict[str, float]]:
         assert self.features_path.exists()
+
+        logging.info(f'{self.__class__.__name__}.{sys._getframe().f_code.co_name} started')
 
         df = self._load_features()
         train_df, test_df = self._temporal_split(df, settings.TEST_MONTHS)
@@ -90,15 +108,21 @@ class ModelPipelineManager:
         y_prob: np.ndarray = pipeline.predict_proba(X_test)[:, 1]
         metrics = self._calculate_metrics(y_test, y_prob)
 
+        logging.info(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} completed - auc={metrics.get('auc', -1)}")
+
         return pipeline, metrics
 
     def save(self, model: Pipeline, metrics: dict[str, float]) -> None:
         save_baseline_model(model, self.model_path)
         save_dict_to_json(metrics, self.metrics_path)
 
-    def load(self) -> Pipeline:
-        return load_baseline_model(self.model_path)
+        logging.info(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} completed - model_path={self.model_path} metrics_path={self.metrics_path}")
 
+    def load(self) -> Pipeline:
+        model = load_baseline_model(self.model_path)
+        logging.info(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} completed - model_path={self.model_path}")
+        return model
+    
     def train_to_save(self) -> Pipeline:
         model, metrics = self.train()
         self.save(model, metrics)
@@ -107,9 +131,23 @@ class ModelPipelineManager:
 
 
 def initialize(force_retrain: bool = False):
-    manager: ModelPipelineManager = ModelPipelineManager(settings.FEATURES_PATH, settings.LOGISTICS_MODEL_PATH, settings.LOGISTICS_MODEL_METRICS_PATH)
+    assert isinstance(force_retrain, bool)
 
-    if force_retrain or not settings.FEATURES_PATH.exists():
-        return manager.train_to_save()
+    try:
+        manager: ModelPipelineManager = ModelPipelineManager(settings.FEATURES_PATH, settings.LOGISTICS_MODEL_PATH, settings.LOGISTICS_MODEL_METRICS_PATH)
 
-    return manager.load()
+        if force_retrain or not settings.LOGISTICS_MODEL_PATH.exists():
+            logging.info(f"{sys._getframe().f_code.co_name} started - model not found or force_retrain=True training new model")
+            return manager.train_to_save()
+
+        logging.info(f"{sys._getframe().f_code.co_name} started - loading existing model from disk")
+
+        return manager.load()
+
+    except FileNotFoundError as e:
+        logging.error(f"initialize failed - missing dependency: {e}")
+        raise
+    
+    except Exception as e:
+        logging.error(f"initialize failed - reason={e}")
+        raise
