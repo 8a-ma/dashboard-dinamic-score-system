@@ -1,7 +1,7 @@
+import sys
 import logging
 import numpy as np
 import pandas as pd
-from pathlib import Path
 from sklearn.pipeline import Pipeline
 from sklearn.base import BaseEstimator, TransformerMixin
 
@@ -11,6 +11,8 @@ class IncomeImputer(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        logging.debug(f'{self.__class__.__name__}.{sys._getframe().f_code.co_name} started - rows={len(X)}')
+
         X = X.copy()
 
         assert 'income' in X.columns
@@ -28,6 +30,8 @@ class IncomeImputer(BaseEstimator, TransformerMixin):
 
         assert X['income'].isna().sum() == 0
 
+        logging.debug(f'{self.__class__.__name__}.{sys._getframe().f_code.co_name} completed - rows={len(X)}')
+
         return X
 
 
@@ -36,6 +40,8 @@ class DebtToIncomeRatioMA(BaseEstimator, TransformerMixin):
         return self
     
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        logging.debug(f'{self.__class__.__name__}.{sys._getframe().f_code.co_name} started - rows={len(X)}')
+
         X = X.copy()
         assert 'customer_id' in X.columns and 'month' in X.columns
         assert 'outstanding_debt' in X.columns and 'income' in X.columns
@@ -50,6 +56,8 @@ class DebtToIncomeRatioMA(BaseEstimator, TransformerMixin):
 
         assert 'ratio_deuda_ingreso_ma' in X.columns
         assert X['ratio_deuda_ingreso_ma'].ge(0).all()
+
+        logging.debug(f'{self.__class__.__name__}.{sys._getframe().f_code.co_name} completed - rows={len(X)}')
 
         return X
 
@@ -72,6 +80,8 @@ class UtilizationTrend(BaseEstimator, TransformerMixin):
 
 
     def transform(self, X:pd.DataFrame) -> pd.DataFrame:
+        logging.debug(f'{self.__class__.__name__}.{sys._getframe().f_code.co_name} started - rows={len(X)}')
+
         X = X.copy()
         assert 'customer_id' in X.columns and 'month' in X.columns
         assert 'utilization_rate' in X.columns
@@ -97,6 +107,8 @@ class UtilizationTrend(BaseEstimator, TransformerMixin):
         assert 'tendencia_utilizacion' in X.columns
         assert len(X) > 0
 
+        logging.debug(f'{self.__class__.__name__}.{sys._getframe().f_code.co_name} completed - rows={len(X)}')
+
         return X
 
 
@@ -105,6 +117,8 @@ class PaymentVolatility(BaseEstimator, TransformerMixin):
         return self
     
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        logging.debug(f'{self.__class__.__name__}.{sys._getframe().f_code.co_name} started - rows={len(X)}')
+
         X = X.copy()
         
         assert 'customer_id' in X.columns and 'month' in X.columns
@@ -120,6 +134,8 @@ class PaymentVolatility(BaseEstimator, TransformerMixin):
         assert 'volatilidad_pagos' in X.columns
         assert len(X) > 0
 
+        logging.debug(f'{self.__class__.__name__}.{sys._getframe().f_code.co_name} completed - rows={len(X)}')
+
         return X
     
 
@@ -133,9 +149,22 @@ def create_pipeline_feature_engineering() -> Pipeline:
 
 
 def generate_features(df: pd.DataFrame) -> pd.DataFrame:
-    pipeline: Pipeline = create_pipeline_feature_engineering()
-    df_transformed = pipeline.fit_transform(df)
+    assert not df.empty
+    assert 'customer_id' in df.columns
 
-    assert len(df_transformed) == len(df)
+    logging.info(f'{sys._getframe().f_code.co_name} started - rows={len(df)} customers={df['customer_id'].nunique()}')
 
-    return df_transformed
+    try:
+        pipeline: Pipeline = create_pipeline_feature_engineering()
+        df_transformed = pipeline.fit_transform(df)
+
+        assert len(df_transformed) == len(df)
+
+        logging.info(f'{sys._getframe().f_code.co_name} completed - rows={len(df_transformed)} new_cols={['ratio_deuda_ingreso_ma', 'tendencia_utilizacion', 'volatilidad_pagos']}')
+
+        return df_transformed
+
+    except Exception as e:
+        logging.error(f'{sys._getframe().f_code.co_name} failed - reason={e}')
+
+        raise
