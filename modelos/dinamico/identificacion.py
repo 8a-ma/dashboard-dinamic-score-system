@@ -4,156 +4,169 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from settings.settings import settings
+from utils.file_helpers import save_npz, load_npz, save_dict_to_json, load_json_to_dict, load_csv_to_df
 
 
 ALL_NUMERIC_COLS: list[str] = [*settings.STATES, *settings.CONTROL, *settings.OBSERVATIONS]
 
 
-def normalize_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, dict[str, float]]]:
-    assert pd.Index(ALL_NUMERIC_COLS).isin(df.columns).all()
-    assert not df.empty
-
-    scale_params: dict[str, dict[str, float]]
-    df_norm: pd.DataFrame = df.copy()
-
-    means: pd.Series = df[ALL_NUMERIC_COLS].mean()
-    stds: pd.Series = df[ALL_NUMERIC_COLS].std(ddof=0)
-    safe_stds: pd.Series = stds.replace(0.0, 1.0)
-
-    df_norm[ALL_NUMERIC_COLS] = (df[ALL_NUMERIC_COLS] - means) / safe_stds
-
-    scale_params = {
-        col: {'mean': float(means[col]), 'std': float(stds[col])}
-        for col in ALL_NUMERIC_COLS
-    }
-
-    assert not df_norm[ALL_NUMERIC_COLS].isnull().any().any()
-
-    return df_norm, scale_params
+class StateSpaceModel:
+    def __init__(self) -> None:
+        self.A: np.ndarray | None = None
+        self.B: np.ndarray | None = None
+        self.C: np.ndarray | None = None
+        self.scale_params: dict[str, dict[str, float]] | None = None
 
 
-def build_regression_matrices(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
-    assert pd.Index(['month', 'customer_id', *settings.STATES, *settings.CONTROL]).isin(df.columns).all()
-    assert not df.empty
+    def _normalize_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        assert pd.Index(ALL_NUMERIC_COLS).isin(df.columns).all()
+        assert not df.empty
 
-    df_sorted = df.sort_values(['customer_id', 'month'])
+        df_norm: pd.DataFrame = df.copy()
 
-    is_last_month: pd.DataFrame = df_sorted['customer_id'] != df_sorted['customer_id'].shift(-1)
+        means: pd.Series = df[ALL_NUMERIC_COLS].mean()
+        stds: pd.Series = df[ALL_NUMERIC_COLS].std(ddof=0)
+        safe_stds: pd.Series = stds.replace(0.0, 1.0)
 
-    x_all: np.ndarray = df_sorted[settings.STATES].values
-    u_all: np.ndarray = df_sorted[settings.CONTROL].values
+        df_norm[ALL_NUMERIC_COLS] = (df[ALL_NUMERIC_COLS] - means) / safe_stds
 
-    xu_all: np.ndarray = np.hstack((x_all, u_all))
+        self.scale_params = {
+            col: {'mean': float(means[col]), 'std': float(stds[col])}
+            for col in ALL_NUMERIC_COLS
+        }
 
-    x_next_all: pd.DataFrame = df_sorted[settings.STATES].shift(-1).values
+        assert not df_norm[ALL_NUMERIC_COLS].isnull().any().any()
 
-    valid_rows: np.ndarray = ~is_last_month.values
-
-    X_in: np.ndarray = xu_all[valid_rows]
-    X_out: np.ndarray = x_next_all[valid_rows]
-
-    assert X_in.shape[0] == X_out.shape[0]
-    assert X_in.shape[1] == settings.N_STATES + settings.N_CONTROL
-    assert not np.isnan(X_out).any()
-
-    return X_in, X_out
+        return df_norm
 
 
-def identify_AB(X_in: np.ndarray, X_out: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    assert X_in.shape[1] == settings.N_STATES + settings.N_CONTROL
-    assert X_in.shape[0] == X_out.shape[0]
+    def _build_regression_matrices(self, df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+        assert pd.Index(['month', 'customer_id', *settings.STATES, *settings.CONTROL]).isin(df.columns).all()
+        assert not df.empty
 
-    AB = X_out.T @ np.linalg.pinv(X_in.T)
+        df_sorted = df.sort_values(['customer_id', 'month'])
 
-    A: np.ndarray = AB[:, :settings.N_STATES]
-    B: np.ndarray = AB[:, settings.N_STATES:settings.N_STATES + settings.N_CONTROL]
+        is_last_month: pd.DataFrame = df_sorted['customer_id'] != df_sorted['customer_id'].shift(-1)
 
-    print(A.shape)
+        x_all: np.ndarray = df_sorted[settings.STATES].values
+        u_all: np.ndarray = df_sorted[settings.CONTROL].values
 
-    eigenvalues: np.ndarray = np.abs(np.linalg.eigvals(A))
-    if (eigenvalues > 1.0).any():
-        warnings.warn(f"A inestable: eigenvalores {eigenvalues}. Kalman divergira.")
+        xu_all: np.ndarray = np.hstack((x_all, u_all))
 
-    assert A.shape == (settings.N_STATES, settings.N_STATES)
-    assert B.shape == (settings.N_STATES, settings.N_CONTROL)
+        x_next_all: pd.DataFrame = df_sorted[settings.STATES].shift(-1).values
 
-    return A, B
+        valid_rows: np.ndarray = ~is_last_month.values
 
+        X_in: np.ndarray = xu_all[valid_rows]
+        X_out: np.ndarray = x_next_all[valid_rows]
 
-def identify_C(df: pd.DataFrame, A: np.ndarray, B: np.ndarray) -> np.ndarray:
-    assert A.shape == (settings.N_STATES, settings.N_STATES)
-    assert B.shape == (settings.N_STATES, settings.N_CONTROL)
-    assert pd.Index([*settings.STATES, *settings.OBSERVATIONS]).isin(df.columns).all()
+        assert X_in.shape[0] == X_out.shape[0]
+        assert X_in.shape[1] == settings.N_STATES + settings.N_CONTROL
+        assert not np.isnan(X_out).any()
 
-    X: np.ndarray = df[settings.STATES].values
-    Y: np.ndarray = df[settings.OBSERVATIONS].values
-
-    C: np.ndarray = Y.T @ np.linalg.pinv(X.T)
-
-    assert C.shape == (settings.N_OBSERVATIONS, settings.N_STATES)
-
-    return C    
+        return X_in, X_out
 
 
-def verify_mse(A: np.ndarray, B: np.ndarray, X_in: np.ndarray, X_out: np.ndarray) -> float:
-    assert A.shape == (settings.N_STATES, settings.N_STATES)
-    assert B.shape == (settings.N_STATES, settings.N_CONTROL)
-    assert X_in.shape[0] == X_out.shape[0]
+    def _identify_AB(self, X_in: np.ndarray, X_out: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        assert X_in.shape[1] == settings.N_STATES + settings.N_CONTROL
+        assert X_in.shape[0] == X_out.shape[0]
 
-    X_t: np.ndarray = X_in[:, :settings.N_STATES]
-    U_t: np.ndarray = X_in[:, settings.N_STATES:settings.N_STATES + settings.N_CONTROL]
+        AB = X_out.T @ np.linalg.pinv(X_in.T)
 
-    X_next_pred: np.ndarray = X_t @ A.T + U_t @ B.T
+        A: np.ndarray = AB[:, :settings.N_STATES]
+        B: np.ndarray = AB[:, settings.N_STATES:settings.N_STATES + settings.N_CONTROL]
 
-    mse: float = float(np.mean((X_out - X_next_pred) ** 2))
+        print(A.shape)
 
-    if mse >= 0.05:
-        warnings.warn(f"Reconstruction MSE {mse:.6f} exceeds threshold 0.05")
+        eigenvalues: np.ndarray = np.abs(np.linalg.eigvals(A))
+        if (eigenvalues > 1.0).any():
+            warnings.warn(f"A inestable: eigenvalores {eigenvalues}. Kalman divergira.")
 
-    return mse
+        assert A.shape == (settings.N_STATES, settings.N_STATES)
+        assert B.shape == (settings.N_STATES, settings.N_CONTROL)
 
-
-def save_matrices(A: np.ndarray, B: np.ndarray, C: np.ndarray, scale_params: dict[str, dict[str, float]], path: Path) -> None:
-    assert A.shape == (settings.N_STATES, settings.N_STATES)
-    assert B.shape == (settings.N_STATES, settings.N_CONTROL)
-    assert C.shape == (settings.N_OBSERVATIONS, settings.N_STATES)
-    assert path.parent.exists()
-
-    np.savez(path, A=A, B=B, C=C)
-
-    json_path = path.with_suffix(".json")
-    with open(json_path, "w", encoding='utf-8') as f:
-        json.dump(scale_params, f, indent=4)
+        return A, B
 
 
-def load_matrices(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    assert path.exists()
+    def _identify_C(self, df: pd.DataFrame) -> np.ndarray:
+        assert pd.Index([*settings.STATES, *settings.OBSERVATIONS]).isin(df.columns).all()
 
-    with np.load(path) as data:
-        A: np.ndarray = data["A"]
-        B: np.ndarray = data["B"]
-        C: np.ndarray = data["C"]
-    
-    assert A.shape == (settings.N_STATES, settings.N_STATES) and C.shape == (settings.N_OBSERVATIONS, settings.N_STATES)
+        X: np.ndarray = df[settings.STATES].values
+        Y: np.ndarray = df[settings.OBSERVATIONS].values
 
-    return A, B, C
+        C: np.ndarray = Y.T @ np.linalg.pinv(X.T)
+
+        assert C.shape == (settings.N_OBSERVATIONS, settings.N_STATES)
+
+        return C
 
 
-def identify(features_path: Path, output_path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    assert features_path.exists()
+    def _verify_mse(self, X_in: np.ndarray, X_out: np.ndarray) -> float:
+        assert self.A.shape == (settings.N_STATES, settings.N_STATES)
+        assert self.B.shape == (settings.N_STATES, settings.N_CONTROL)
+        assert X_in.shape[0] == X_out.shape[0]
 
-    if not output_path.exists():
-        df = pd.read_csv(features_path)
+        X_t: np.ndarray = X_in[:, :settings.N_STATES]
+        U_t: np.ndarray = X_in[:, settings.N_STATES:settings.N_STATES + settings.N_CONTROL]
 
-        df_norm, scale_params = normalize_data(df)
+        X_next_pred: np.ndarray = X_t @ self.A.T + U_t @ self.B.T
 
-        X_in, X_out = build_regression_matrices(df_norm)
+        mse: float = float(np.mean((X_out - X_next_pred) ** 2))
 
-        A, B = identify_AB(X_in, X_out)
-        C = identify_C(df_norm, A, B)
+        if mse >= 0.05:
+            warnings.warn(f"Reconstruction MSE {mse:.6f} exceeds threshold 0.05")
 
-        _ = verify_mse(A, B, X_in, X_out)
+        return mse
 
-        save_matrices(A, B, C, scale_params, output_path)
-    
-    return load_matrices(output_path)
+    def fit(self, df: pd.DataFrame) -> 'StateSpaceModel':
+        df_norm = self._normalize_data(df)
+        X_in, X_out = self._build_regression_matrices(df_norm)
+
+        self.A, self.B = self._identify_AB(X_in, X_out)
+        self.C = self._identify_C(df_norm)
+
+        _ = self._verify_mse(X_in, X_out)
+
+        return self
+
+    def save(self) -> None:
+        assert self.A is not None and self.B is not None and self.C is not None
+        assert self.scale_params is not None
+
+        save_npz(settings.MATRIX_SYSTEM_PATH, A=self.A, B=self.B, C=self.C)
+        save_dict_to_json(self.scale_params, settings.MATRIX_SYSTEM_SCALE_PATH)
+
+    @classmethod
+    def load(cls) -> 'StateSpaceModel':
+        matrix: dict[str, np.ndarray] = load_npz(settings.MATRIX_SYSTEM_PATH)
+
+        model = cls()
+        model.A = matrix['A']
+        model.B = matrix['B']
+        model.C = matrix['C']
+
+        model.scale_params = load_json_to_dict(settings.MATRIX_SYSTEM_SCALE_PATH)
+
+        assert model.A.shape == (settings.N_STATES, settings.N_STATES)
+        assert model.B.shape == (settings.N_STATES, settings.N_CONTROL)
+        assert model.C.shape == (settings.N_OBSERVATIONS, settings.N_STATES)
+
+        return model
+
+
+def identify(force_train: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    assert settings.FEATURES_PATH.exists()
+
+    model_exists = settings.MATRIX_SYSTEM_PATH.exists() and settings.MATRIX_SYSTEM_SCALE_PATH.exists()
+
+    if force_train or not model_exists:
+        df = load_csv_to_df(settings.FEATURES_PATH)
+
+        model = StateSpaceModel()
+        model.fit(df)
+        model.save()
+
+    model = StateSpaceModel.load()
+    assert model.A is not None and model.B is not None and model.C is not None
+
+    return model.A, model.B, model.C

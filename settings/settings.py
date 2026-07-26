@@ -16,6 +16,7 @@ class Settings:
     LOGISTICS_MODEL_PATH: Path = DB_PATH / "modelo_logistico.pkl"
     LOGISTICS_MODEL_METRICS_PATH: Path = DB_PATH / "metricas_baseline.json"
     MATRIX_SYSTEM_PATH: Path = DB_PATH / "matrices_sistema.npz"
+    MATRIX_SYSTEM_SCALE_PATH: Path = DB_PATH / "scale_matrices_sistema.json"
     COMPARISON_PATH: Path = DB_PATH / "comparacion_modelos.json"
 
     SQLITE_DB: Path = DB_PATH / "credito.db"

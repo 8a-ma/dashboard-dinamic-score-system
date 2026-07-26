@@ -1,5 +1,6 @@
 import json
 import pickle
+import numpy as np
 import pandas as pd
 from pathlib import Path
 from sklearn.pipeline import Pipeline
@@ -49,3 +50,24 @@ def save_dict_to_json(data: dict, path: Path, indent: int = 4) -> None:
 
 
     assert path.exists()
+
+def load_json_to_dict(path: Path) -> dict[str, object]:
+    assert path.exists()
+
+    with open(path, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+
+def save_npz(path: Path, **arrays: np.ndarray) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    np.savez(path, **arrays)
+
+    assert path.exists()
+
+
+def load_npz(path: Path) -> dict[str, np.ndarray]:
+    assert path.exists()
+
+    with np.load(path) as d:
+        return {key: d[key] for key in d.files}
