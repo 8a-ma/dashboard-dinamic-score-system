@@ -1,8 +1,8 @@
-import json
+import sys
+import logging
 import warnings
 import numpy as np
 import pandas as pd
-from pathlib import Path
 from settings.settings import settings
 from utils.file_helpers import save_npz, load_npz, save_dict_to_json, load_json_to_dict, load_csv_to_df
 
@@ -22,6 +22,8 @@ class StateSpaceModel:
         assert pd.Index(ALL_NUMERIC_COLS).isin(df.columns).all()
         assert not df.empty
 
+        logging.debug(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} started - cols={ALL_NUMERIC_COLS} rows={len(df)}")
+
         df_norm: pd.DataFrame = df.copy()
 
         means: pd.Series = df[ALL_NUMERIC_COLS].mean()
@@ -37,12 +39,16 @@ class StateSpaceModel:
 
         assert not df_norm[ALL_NUMERIC_COLS].isnull().any().any()
 
+        logging.debug(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} completed - scale_params_keys={list(self.scale_params.keys())}")
+
         return df_norm
 
 
     def _build_regression_matrices(self, df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
         assert pd.Index(['month', 'customer_id', *settings.STATES, *settings.CONTROL]).isin(df.columns).all()
         assert not df.empty
+
+        logging.debug(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} started")
 
         df_sorted = df.sort_values(['customer_id', 'month'])
 
@@ -64,32 +70,38 @@ class StateSpaceModel:
         assert X_in.shape[1] == settings.N_STATES + settings.N_CONTROL
         assert not np.isnan(X_out).any()
 
+        logging.debug(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} completed - valid_rows={valid_rows.sum()} X_in.shape={X_in.shape} X_out.shape={X_out.shape}")
+
         return X_in, X_out
 
 
     def _identify_AB(self, X_in: np.ndarray, X_out: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         assert X_in.shape[1] == settings.N_STATES + settings.N_CONTROL
         assert X_in.shape[0] == X_out.shape[0]
+        logging.debug(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} started")
 
         AB = X_out.T @ np.linalg.pinv(X_in.T)
 
         A: np.ndarray = AB[:, :settings.N_STATES]
         B: np.ndarray = AB[:, settings.N_STATES:settings.N_STATES + settings.N_CONTROL]
 
-        print(A.shape)
-
         eigenvalues: np.ndarray = np.abs(np.linalg.eigvals(A))
         if (eigenvalues > 1.0).any():
-            warnings.warn(f"A inestable: eigenvalores {eigenvalues}. Kalman divergira.")
+            warnings.warn(f"A inestable: eigenvalues {eigenvalues}. Kalman divergira.")
+            logging.warning(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} A is unstable in eigenvalues - eigenvalues={eigenvalues}")
 
         assert A.shape == (settings.N_STATES, settings.N_STATES)
         assert B.shape == (settings.N_STATES, settings.N_CONTROL)
+
+        logging.debug(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} completed - A.shape={A.shape} B.shape={B.shape}")
 
         return A, B
 
 
     def _identify_C(self, df: pd.DataFrame) -> np.ndarray:
         assert pd.Index([*settings.STATES, *settings.OBSERVATIONS]).isin(df.columns).all()
+
+        logging.debug(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} started")
 
         X: np.ndarray = df[settings.STATES].values
         Y: np.ndarray = df[settings.OBSERVATIONS].values
@@ -98,6 +110,8 @@ class StateSpaceModel:
 
         assert C.shape == (settings.N_OBSERVATIONS, settings.N_STATES)
 
+        logging.debug(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} completed - C.shape={C.shape}")
+
         return C
 
 
@@ -105,6 +119,8 @@ class StateSpaceModel:
         assert self.A.shape == (settings.N_STATES, settings.N_STATES)
         assert self.B.shape == (settings.N_STATES, settings.N_CONTROL)
         assert X_in.shape[0] == X_out.shape[0]
+
+        logging.debug(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} started")
 
         X_t: np.ndarray = X_in[:, :settings.N_STATES]
         U_t: np.ndarray = X_in[:, settings.N_STATES:settings.N_STATES + settings.N_CONTROL]
@@ -115,19 +131,31 @@ class StateSpaceModel:
 
         if mse >= 0.05:
             warnings.warn(f"Reconstruction MSE {mse:.6f} exceeds threshold 0.05")
+            logging.warning(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} - mse={mse:.6f} exceeds threshold 0.05")
+
+        logging.debug(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} completed")
 
         return mse
 
     def fit(self, df: pd.DataFrame) -> 'StateSpaceModel':
-        df_norm = self._normalize_data(df)
-        X_in, X_out = self._build_regression_matrices(df_norm)
+        try:
+            logging.info(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} started - rows={len(df)}")
 
-        self.A, self.B = self._identify_AB(X_in, X_out)
-        self.C = self._identify_C(df_norm)
+            df_norm = self._normalize_data(df)
+            X_in, X_out = self._build_regression_matrices(df_norm)
 
-        _ = self._verify_mse(X_in, X_out)
+            self.A, self.B = self._identify_AB(X_in, X_out)
+            self.C = self._identify_C(df_norm)
 
-        return self
+            mse = self._verify_mse(X_in, X_out)
+
+            logging.info(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} completed - A.shape={self.A.shape} mse={mse:.6f}")
+
+            return self
+
+        except Exception as e:
+            logging.error(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} failed - reason={e}")
+
 
     def save(self) -> None:
         assert self.A is not None and self.B is not None and self.C is not None
@@ -136,8 +164,10 @@ class StateSpaceModel:
         save_npz(settings.MATRIX_SYSTEM_PATH, A=self.A, B=self.B, C=self.C)
         save_dict_to_json(self.scale_params, settings.MATRIX_SYSTEM_SCALE_PATH)
 
+        logging.info(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} completed - matrix_path={settings.MATRIX_SYSTEM_PATH}")
+
     @classmethod
-    def load(cls) -> 'StateSpaceModel':
+    def load(cls: 'StateSpaceModel') -> 'StateSpaceModel':
         matrix: dict[str, np.ndarray] = load_npz(settings.MATRIX_SYSTEM_PATH)
 
         model = cls()
@@ -151,6 +181,8 @@ class StateSpaceModel:
         assert model.B.shape == (settings.N_STATES, settings.N_CONTROL)
         assert model.C.shape == (settings.N_OBSERVATIONS, settings.N_STATES)
 
+        logging.info(f"{cls.__class__.__name__}.{sys._getframe().f_code.co_name} completed - A.shape={model.A.shape}")
+
         return model
 
 
@@ -159,14 +191,22 @@ def identify(force_train: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndar
 
     model_exists = settings.MATRIX_SYSTEM_PATH.exists() and settings.MATRIX_SYSTEM_SCALE_PATH.exists()
 
-    if force_train or not model_exists:
-        df = load_csv_to_df(settings.FEATURES_PATH)
+    logging.info(f"{sys._getframe().f_code.co_name} started - model_exists={model_exists} force_train={force_train}")
 
-        model = StateSpaceModel()
-        model.fit(df)
-        model.save()
+    try:
+        if force_train or not model_exists:
+            df = load_csv_to_df(settings.FEATURES_PATH)
 
-    model = StateSpaceModel.load()
-    assert model.A is not None and model.B is not None and model.C is not None
+            model = StateSpaceModel()
+            model.fit(df)
+            model.save()
 
-    return model.A, model.B, model.C
+        model = StateSpaceModel.load()
+        assert model.A is not None and model.B is not None and model.C is not None
+
+        logging.info(f"{sys._getframe().f_code.co_name} completed")
+
+        return model.A, model.B, model.C
+
+    except Exception as e:
+        logging.error(f"{sys._getframe().f_code.co_name} failed - reason={e}")

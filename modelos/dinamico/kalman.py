@@ -1,3 +1,5 @@
+import sys
+import logging
 import warnings
 import numpy as np
 from settings.settings import settings
@@ -34,6 +36,7 @@ class FiltroKalman:
         assert x_pred.shape == (settings.N_STATES, 1)
 
         if np.isnan(y_t).any():
+            logging.debug(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} update: y_t contains NaN, skipping measurement update")
             return x_pred, P_pred
 
         S: np.ndarray = self.C @ P_pred @ self.C.T + self.R
@@ -53,6 +56,7 @@ class FiltroKalman:
 
         if (min_eigenvalue := float(np.linalg.eigvals(P).min().real)) < 0:
             warnings.warn(f"Negative eigenvalue in covariance P ({min_eigenvalue:.6f}). Applying symmetrization.")
+            logging.warning(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} min_eigenvalue={min_eigenvalue:.6f}. Applying symetrization")
             P = (P + P.T) / 2.0
             P = P + (abs(min_eigenvalue) + 1e-6) * np.eye(settings.N_STATES)
         
@@ -73,18 +77,30 @@ class FiltroKalman:
     def execute_sequence(self, U: np.ndarray, Y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         assert U.shape[0] == Y.shape[0]
         assert U.ndim == 2 and Y.ndim == 2
+
+        try: 
  
-        T: int = U.shape[0]
-        X_hat: np.ndarray = np.zeros((T, 4))
-        P_trace: np.ndarray = np.zeros(T)
- 
-        for t in range(T):
-            u_t: np.ndarray = U[t].reshape(-1, 1)
-            y_t: np.ndarray = Y[t].reshape(-1, 1)
- 
-            x_hat, P = self.step(u_t, y_t)
- 
-            X_hat[t] = x_hat.flatten()
-            P_trace[t] = float(np.trace(P))
- 
-        return X_hat, P_trace
+            T: int = U.shape[0]
+
+            logging.info(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} started - T={T}")
+
+            X_hat: np.ndarray = np.zeros((T, 4))
+            P_trace: np.ndarray = np.zeros(T)
+    
+            for t in range(T):
+                u_t: np.ndarray = U[t].reshape(-1, 1)
+                y_t: np.ndarray = Y[t].reshape(-1, 1)
+    
+                x_hat, P = self.step(u_t, y_t)
+    
+                X_hat[t] = x_hat.flatten()
+                P_trace[t] = float(np.trace(P))
+
+            logging.info(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} completed - T={T} p_trace_final={P_trace[-1]:.4f}")    
+
+            return X_hat, P_trace
+
+        except Exception as e:
+            logging.error(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} failed - T={T} reason={e}") 
+
+            raise
