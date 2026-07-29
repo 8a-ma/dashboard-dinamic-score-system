@@ -62,11 +62,12 @@ class ModelPipelineManager:
     
         return train, test
 
-    def _calculate_metrics(self, y_true: np.ndarray, y_prob: np.ndarray) -> dict[str, float]:
+    @classmethod
+    def _calculate_metrics(cls, y_true: np.ndarray, y_prob: np.ndarray) -> dict[str, float]:
         assert len(y_true) == len(y_prob)
         assert len(y_true) > 0
 
-        logging.debug(f'{self.__class__.__name__}.{sys._getframe().f_code.co_name} started')
+        logging.debug(f'{cls.__class__.__name__}.{sys._getframe().f_code.co_name} started')
 
         auc: float = float(roc_auc_score(y_true, y_prob))
         gini: float = 2.0 * auc - 1.0
@@ -85,7 +86,7 @@ class ModelPipelineManager:
 
         assert 0.0 <= metrics['auc'] <= 1.0
 
-        logging.debug(f'{self.__class__.__name__}.{sys._getframe().f_code.co_name} completed - auc={auc}, gini={gini} ks={ks}')
+        logging.debug(f'{cls.__class__.__name__}.{sys._getframe().f_code.co_name} completed - auc={auc}, gini={gini} ks={ks}')
         
         return metrics
 
