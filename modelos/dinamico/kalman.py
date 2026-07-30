@@ -84,7 +84,7 @@ class FiltroKalman:
 
             logging.info(f"{self.__class__.__name__}.{sys._getframe().f_code.co_name} started - T={T}")
 
-            X_hat: np.ndarray = np.zeros((T, 4))
+            X_hat: np.ndarray = np.zeros((T, settings.N_STATES))
             P_trace: np.ndarray = np.zeros(T)
     
             for t in range(T):

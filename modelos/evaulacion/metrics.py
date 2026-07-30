@@ -33,7 +33,9 @@ class MetricsCalculator:
         assert 'prob_default' in logistic_df.columns
         assert 'score_dinamico' in dynamic_df.columns
 
-        y_true: np.ndarray = logistic_df[settings.TARGET_COLUMN].values
+        merged = logistic_df.merge(dynamic_df[['customer_id', 'month', 'score_dinamico', 'loss']], on=['customer_id', 'month'])
+        y_true = merged[settings.TARGET_COLUMN].values
+        
         log_metrics: dict[str, float] = ModelPipelineManager._calculate_metrics(y_true, logistic_df['prob_default'].values)
         dyn_metrics: dict[str, float] = ModelPipelineManager._calculate_metrics(y_true, 1.0 - dynamic_df['score_dinamico'].values)
 

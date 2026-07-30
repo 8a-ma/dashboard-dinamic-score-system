@@ -19,16 +19,16 @@ class LogisticSimulationStrategy(ISimulationStrategy):
         self._model = model
 
     def simulate(self, df: pd.DataFrame) -> pd.DataFrame:
-        df: pd.DataFrame = df.copy()
-        df[settings.FEATURE_COLUMNS] = df[settings.FEATURE_COLUMNS].fillna(0.0)
+        df_copy: pd.DataFrame = df.copy()
+        df_copy[settings.FEATURE_COLUMNS] = df_copy[settings.FEATURE_COLUMNS].fillna(0.0)
 
-        probs: np.ndarray = self._model.predict_proba(df[settings.FEATURE_COLUMNS])[:, 1]
+        probs: np.ndarray = self._model.predict_proba(df_copy[settings.FEATURE_COLUMNS])[:, 1]
 
-        result: pd.DataFrame = df[['customer_id', 'month', 'default_indicator', 'outstanding_debt']].copy()
+        result: pd.DataFrame = df_copy[['customer_id', 'month', 'default_indicator', 'outstanding_debt']].copy()
         result['prob_default'] = probs
         result['loss'] = result.apply(lambda r: calculate_month_loss(float(r['outstanding_debt']), int(r['default_indicator'])), axis=1)
 
-        assert len(result) == len(df)
+        assert len(result) == len(df_copy)
         assert result['prob_default'].between(0.0, 1.0).all()
 
         return result[['customer_id', 'month', 'prob_default', 'loss', 'default_indicator']]
@@ -44,7 +44,7 @@ class DynamicSimulationStrategy(ISimulationStrategy):
         self._R_k = R_k
 
         self._scale_params = scale_params
-        self._credit_limit_max_norm = None
+        self._credit_limit_max_norm = 1.0
 
     def _simulate_customer_kalman(self, df: pd.DataFrame) -> list[dict]:
         assert not df.empty
@@ -62,30 +62,30 @@ class DynamicSimulationStrategy(ISimulationStrategy):
         rows: list[dict] = []
 
         for _, row in df.sort_values('month').iterrows():
-                u_t: np.ndarray = self._normalize_vector(row, settings.CONTROL).reshape(-1, 1)
-                y_nan: bool = pd.isna(row.get('num_transactions')) or pd.isna(row.get('payment_amount'))
-                y_t: np.ndarray = (
-                    np.full((settings.N_OBSERVATIONS, 1), np.nan) if y_nan
-                    else self._normalize_vector(row, settings.OBSERVATIONS).reshape(-1, 1)
-                )
-         
-                x_hat, P = kalman.step(u_t, y_t)
-                score: float = dynamic_score(x_hat, P, self._K, self._credit_limit_max_norm)
-                limit: float = decide_credit_limit(self._K, x_hat, self._credit_limit_max_norm)
-                deuda_expuesta: float = min(float(row['outstanding_debt']), limit)
-         
-                rows.append({
-                    'customer_id': str(row['customer_id']),
-                    'month': int(row['month']),
-                    'x_hat_debt': float(x_hat[0, 0]),
-                    'x_hat_income': float(x_hat[1, 0]),
-                    'x_hat_util': float(x_hat[2, 0]),
-                    'p_trace': float(np.trace(P)),
-                    'score_dinamico': score,
-                    'limit_recomendado': limit,
-                    'loss': calculate_month_loss(deuda_expuesta, int(row['default_indicator'])),
-                    'default_indicator': int(row['default_indicator'])
-                })
+            u_t: np.ndarray = self._normalize_vector(row, settings.CONTROL).reshape(-1, 1)
+            y_nan: bool = pd.isna(row.get('num_transactions')) or pd.isna(row.get('payment_amount'))
+            y_t: np.ndarray = (
+                np.full((settings.N_OBSERVATIONS, 1), np.nan) if y_nan
+                else self._normalize_vector(row, settings.OBSERVATIONS).reshape(-1, 1)
+            )
+        
+            x_hat, P = kalman.step(u_t, y_t)
+            score: float = dynamic_score(x_hat, P, self._K, self._credit_limit_max_norm)
+            limit: float = decide_credit_limit(self._K, x_hat, self._credit_limit_max_norm)
+            deuda_expuesta: float = min(float(row['outstanding_debt']), limit)
+        
+            rows.append({
+                'customer_id': str(row['customer_id']),
+                'month': int(row['month']),
+                'x_hat_debt': float(x_hat[0, 0]),
+                'x_hat_income': float(x_hat[1, 0]),
+                'x_hat_util': float(x_hat[2, 0]),
+                'p_trace': float(np.trace(P)),
+                'score_dinamico': score,
+                'limit_recomendado': limit,
+                'loss': calculate_month_loss(deuda_expuesta, int(row['default_indicator'])),
+                'default_indicator': int(row['default_indicator'])
+            })
          
         return rows
 
