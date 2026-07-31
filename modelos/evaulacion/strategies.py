@@ -3,6 +3,7 @@ import pandas as pd
 from abc import ABC, abstractmethod
 from sklearn.pipeline import Pipeline
 from settings.settings import settings
+from utils.hepers import denormalize_vector
 from modelos.dinamico.kalman import FiltroKalman
 from modelos.evaulacion.metrics import calculate_month_loss
 from modelos.dinamico.controlador import dynamic_score, decide_credit_limit
@@ -124,7 +125,7 @@ class DynamicSimulationStrategy(ISimulationStrategy):
                 y_t: np.ndarray = np.full((settings.N_OBSERVATIONS, 1), np.nan) if y_nan else self._normalize_vector(row, settings.OBSERVATIONS).reshape(-1, 1)
 
                 x_hat, P = kalman.step(u_t, y_t)
-                approved_limit: float = decide_credit_limit(self._K, x_hat, self._credit_limit_max_norm)
+                approved_limit: float = decide_credit_limit(self._K, x_hat, self._credit_limit_max_norm, self._scale_params)
                 score: float = dynamic_score(x_hat, P, self._K, self._credit_limit_max_norm)
                 loss: float = calculate_month_loss(
                     row['outstanding_debt'],

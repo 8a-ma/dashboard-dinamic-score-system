@@ -3,6 +3,7 @@ import logging
 import numpy as np
 from settings.settings import settings
 from scipy.linalg import solve_discrete_are
+from utils.hepers import denormalize_vector
 
 
 def calculate_lqr_gain(A: np.ndarray, B: np.ndarray, Q_lqr: np.ndarray, R_lqr: np.ndarray) -> np.ndarray:
@@ -28,32 +29,36 @@ def calculate_lqr_gain(A: np.ndarray, B: np.ndarray, Q_lqr: np.ndarray, R_lqr: n
         raise
 
 
-def decide_credit_limit(K: np.ndarray, x_hat: np.ndarray, credit_limit_max: float) -> float:
+def decide_credit_limit(K: np.ndarray, x_hat: np.ndarray, credit_limit_max_norm: float, scale_params: dict) -> float:
     assert x_hat.shape == (settings.N_STATES, 1)
     assert K.shape == (settings.N_CONTROL, settings.N_STATES)
+    assert 'credit_limit' in scale_params
 
     u_b: float = float((-K @ x_hat)[0, 0])
-    recommended_limit: float = max(0.0, min(credit_limit_max, u_b))
+    recommended_limit: float = max(0.0, min(credit_limit_max_norm, u_b))
+    recommended_limit_real: float = denormalize_vector(np.array([recommended_limit]), scale_params, ['credit_limit'])[0]
 
-    logging.debug(f"{sys._getframe().f_code.co_name} u_b={u_b:.2f} recommended={recommended_limit:.2f} max={credit_limit_max:.2f}")
+    logging.debug(f"{sys._getframe().f_code.co_name} u_b={u_b:.2f} recommended={recommended_limit_real:.2f} max={credit_limit_max_norm:.2f}")
 
-    assert 0.0 <= recommended_limit <= credit_limit_max
+    assert 0.0 <= recommended_limit_real <= denormalize_vector(np.array([credit_limit_max_norm]), scale_params, ['credit_limit'])[0]
 
-    return recommended_limit
+    return recommended_limit_real
 
 
-def dynamic_score(x_hat: np.ndarray, P: np.ndarray, K: np.ndarray, credit_limit_max: float) -> float:
-    assert 0 < credit_limit_max
+def dynamic_score(x_hat: np.ndarray, P: np.ndarray, K: np.ndarray, credit_limit_max_norm: float) -> float:
+    assert 0 < credit_limit_max_norm
     assert x_hat.shape == (settings.N_STATES, 1)
 
-    recommended_limit = decide_credit_limit(K, x_hat, credit_limit_max)
+    u_b_norm: float = float((-K @ x_hat)[0, 0])
+    recommended_norm: float = max(0.0, min(credit_limit_max_norm, u_b_norm))
+
     uncertainty_penalty: float = 0.1
     p_trace: float = float(np.trace(P))
-    
-    score: float = (recommended_limit / credit_limit_max) * max(0.0, 1.0 - uncertainty_penalty * p_trace)
-    score = max(0.0, min(1.0, score))
 
-    logging.debug(f"{sys._getframe().f_code.co_name} score={score:.4f} p_trace={p_trace:.4f} recommended_limit={recommended_limit:.2f}")
+    score: float = min(1.0, max(0.0, recommended_norm / credit_limit_max_norm))
+    score = score * max(0.0, 1.0 - uncertainty_penalty * p_trace)
+
+    logging.debug(f"{sys._getframe().f_code.co_name} score={score:.4f} p_trace={p_trace:.4f} recommended_limit={recommended_norm:.2f}")
 
     assert 0.0 <= score <= 1.0
 
