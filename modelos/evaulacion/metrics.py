@@ -65,8 +65,11 @@ class MetricsCalculator:
         return comparison
 
 
-def calculate_month_loss(outstanding_debt: float, default_flag: int, recovery_rate: float = settings.RECOVERY_RATE) -> float:
+def calculate_month_loss(outstanding_debt: float, approved_limit: int, default_flat: float, recovery_rate: float = settings.RECOVERY_RATE) -> float:
     assert 0 <= recovery_rate <= 1
     assert outstanding_debt >= 0.0
 
-    return outstanding_debt * (1.0 - recovery_rate) if default_flag == 1 else 0.0
+    if default_flat == 0:
+        return 0.0
+
+    return min(outstanding_debt, approved_limit) * (1.0 - recovery_rate)

@@ -18,20 +18,47 @@ class LogisticSimulationStrategy(ISimulationStrategy):
     def __init__(self, model: Pipeline) -> None:
         self._model = model
 
+    def _decide_logistic_limit(self, prob_default: float, original_limit: float, threshold: float = 0.5) -> float:
+        assert 0.0 <= prob_default <= 1.0
+        assert original_limit >= 0.0
+
+        if prob_default >= threshold:
+            return 0.0
+
+        return original_limit * (1.0 - prob_default)
+    
+
     def simulate(self, df: pd.DataFrame) -> pd.DataFrame:
+        assert not df.empty
+        assert 'month' in df.columns
+
         df_copy: pd.DataFrame = df.copy()
         df_copy[settings.FEATURE_COLUMNS] = df_copy[settings.FEATURE_COLUMNS].fillna(0.0)
 
-        probs: np.ndarray = self._model.predict_proba(df_copy[settings.FEATURE_COLUMNS])[:, 1]
+        monthly_results: list = []
 
-        result: pd.DataFrame = df_copy[['customer_id', 'month', 'default_indicator', 'outstanding_debt']].copy()
-        result['prob_default'] = probs
-        result['loss'] = result.apply(lambda r: calculate_month_loss(float(r['outstanding_debt']), int(r['default_indicator'])), axis=1)
+        for t in sorted(df_copy['month'].unique()):
+            df_t = df_copy[df_copy['month'] == t].copy()
+
+            df_t['prob_default'] = self._model.predict_proba(df_t[settings.FEATURE_COLUMNS])[:, 1]
+            df_t['approved_limit'] = [self._decide_logistic_limit(prob, limit) for prob, limit in zip(df_t['prob_default'], df_t['credit_limit'])]
+            df_t['loss'] = df_t.apply(
+                lambda r: calculate_month_loss(
+                    float(r['outstanding_debt']), 
+                    r['approved_limit'], 
+                    int(r['default_indicator'])
+                ), 
+                axis=1
+            )
+
+            monthly_results.append(df_t)
+
+        result: pd.DataFrame = pd.concat(monthly_results, ignore_index=True)
 
         assert len(result) == len(df_copy)
         assert result['prob_default'].between(0.0, 1.0).all()
 
-        return result[['customer_id', 'month', 'prob_default', 'loss', 'default_indicator']]
+        return result[['customer_id', 'month', 'prob_default', 'approved_limit','loss', 'default_indicator']]
 
 
 class DynamicSimulationStrategy(ISimulationStrategy):
@@ -45,49 +72,6 @@ class DynamicSimulationStrategy(ISimulationStrategy):
 
         self._scale_params = scale_params
         self._credit_limit_max_norm = 1.0
-
-    def _simulate_customer_kalman(self, df: pd.DataFrame) -> list[dict]:
-        assert not df.empty
-
-        kalman: FiltroKalman = FiltroKalman(
-            self._A,
-            self._B,
-            self._C,
-            np.zeros((settings.N_STATES, 1)),
-            np.eye(settings.N_STATES),
-            self._Q_k,
-            self._R_k
-        )
-
-        rows: list[dict] = []
-
-        for _, row in df.sort_values('month').iterrows():
-            u_t: np.ndarray = self._normalize_vector(row, settings.CONTROL).reshape(-1, 1)
-            y_nan: bool = pd.isna(row.get('num_transactions')) or pd.isna(row.get('payment_amount'))
-            y_t: np.ndarray = (
-                np.full((settings.N_OBSERVATIONS, 1), np.nan) if y_nan
-                else self._normalize_vector(row, settings.OBSERVATIONS).reshape(-1, 1)
-            )
-        
-            x_hat, P = kalman.step(u_t, y_t)
-            score: float = dynamic_score(x_hat, P, self._K, self._credit_limit_max_norm)
-            limit: float = decide_credit_limit(self._K, x_hat, self._credit_limit_max_norm)
-            deuda_expuesta: float = min(float(row['outstanding_debt']), limit)
-        
-            rows.append({
-                'customer_id': str(row['customer_id']),
-                'month': int(row['month']),
-                'x_hat_debt': float(x_hat[0, 0]),
-                'x_hat_income': float(x_hat[1, 0]),
-                'x_hat_util': float(x_hat[2, 0]),
-                'p_trace': float(np.trace(P)),
-                'score_dinamico': score,
-                'limit_recomendado': limit,
-                'loss': calculate_month_loss(deuda_expuesta, int(row['default_indicator'])),
-                'default_indicator': int(row['default_indicator'])
-            })
-         
-        return rows
 
     def _normalize_vector(self, row: pd.Series,  cols: list[str]) -> np.ndarray:
         assert len(cols) > 0
@@ -108,11 +92,60 @@ class DynamicSimulationStrategy(ISimulationStrategy):
 
         self._credit_limit_max_norm: float = (float(df[settings.CONTROL[0]].max()) - cl_mean) / cl_std if cl_std > 0 else 1.0
 
-        all_rows: list[dict] = []
-        for _, group in df.groupby('customer_id'):
-            all_rows.extend(self._simulate_customer_kalman(group))
+        kalman_filters: dict[str, FiltroKalman] = {}
+        all_results: list[dict] = []
 
-        result: pd.DataFrame = pd.DataFrame(all_rows)
+        customer_groups = {cid: group.set_index('month') for cid, group in df.groupby('customer_id')}
+
+        for cid in sorted(df['customer_id'].unique()):
+            df_client = customer_groups[cid]
+
+            kalman = FiltroKalman(
+                            self._A,
+                            self._B,
+                            self._C,
+                            np.zeros((settings.N_STATES, 1)),
+                            np.eye(settings.N_STATES),
+                            self._Q_k,
+                            self._R_k
+                        )
+
+            for t in sorted(df['month'].unique()):
+                if t not in df_client.index:
+                    continue
+
+                row = df_client.loc[t]
+
+                if isinstance(row, pd.DataFrame):
+                    row = row.iloc[0]
+
+                u_t: np.ndarray = self._normalize_vector(row, settings.CONTROL).reshape(-1, 1)
+                y_nan: bool = pd.isna(row.get('num_transactions')) or pd.isna(row.get('payment_amount'))
+                y_t: np.ndarray = np.full((settings.N_OBSERVATIONS, 1), np.nan) if y_nan else self._normalize_vector(row, settings.OBSERVATIONS).reshape(-1, 1)
+
+                x_hat, P = kalman.step(u_t, y_t)
+                approved_limit: float = decide_credit_limit(self._K, x_hat, self._credit_limit_max_norm)
+                score: float = dynamic_score(x_hat, P, self._K, self._credit_limit_max_norm)
+                loss: float = calculate_month_loss(
+                    row['outstanding_debt'],
+                    approved_limit,
+                    row['default_indicator']
+                )
+
+                all_results.append({
+                    'customer_id': str(cid),
+                    'month': int(t),
+                    'x_hat_debt': float(x_hat[0, 0]),
+                    'x_hat_income': float(x_hat[1, 0]),
+                    'x_hat_util': float(x_hat[2, 0]),
+                    'p_trace': float(np.trace(P)),
+                    'score_dinamico': score,
+                    'approved_limit': approved_limit,
+                    'loss': loss,
+                    'default_indicator': int(row['default_indicator'])
+                })
+
+        result: pd.DataFrame = pd.DataFrame(all_results)
 
         assert len(result) == len(df)
         assert 'score_dinamico' in result.columns
