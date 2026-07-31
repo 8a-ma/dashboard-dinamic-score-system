@@ -29,6 +29,52 @@ class MetricsCalculator:
 
         return {month: self.calculate_psi(base_scores, scores_by_month[month]) for month in months}
 
+    def _calulate_tasa_mora(self, group: pd.DataFrame) -> float:
+        assert not group.empty
+
+        with_credit = group[group['approved_limit'] > 0]
+        customer_with_credit = len(with_credit)
+
+        if customer_with_credit > 0:
+            return float(with_credit['default_indicator'].sum() / customer_with_credit)
+
+        return 0.0
+
+    def calculate_business_metrics(self, logistic_df: pd.DataFrame, dynamic_df: pd.DataFrame) -> dict[str, object]:
+        required_cols = {'customer_id', 'month', 'approved_limit', 'loss', 'default_indicator'}
+        assert required_cols.issubset(set(logistic_df.columns))
+        assert required_cols.issubset(set(dynamic_df.columns))
+
+        results: dict[str, object] = {}
+        models: dict[str, pd.DataFrame] = {
+            'logistico': logistic_df,
+            'dinamico': dynamic_df
+        }
+
+        for model_key, df in models.items():
+            monthly_tasa_mora = df.groupby('month').apply(self._calulate_tasa_mora, include_groups=False).to_dict()
+            total_committed_capital = float(df['approved_limit'].sum())
+            loss_total = float(df['loss'].sum())
+            capital_loss_ratio = float(loss_total / total_committed_capital) if total_committed_capital > 0 else 0.0
+            monthly_approved_ratio = df.groupby('month').apply(lambda g: float((g['approved_limit'] > 0).sum() / len(g)), include_groups=False).to_dict()
+            std_per_customer = df.groupby('customer_id')['approved_limit'].std(ddof=0)
+            average_limit_stability = float(std_per_customer.mean()) if not std_per_customer.empty else 0.0
+            FP = int(((df['approved_limit'] == 0) & (df['default_indicator'] == 1)).sum())
+            FN = int(((df['approved_limit'] == 0) & (df['default_indicator'] == 0)).sum())
+
+            results[model_key] = {
+                'tasa_mora_mensual': monthly_tasa_mora,
+                'capital_comprometido_total': total_committed_capital,
+                'ratio_perdida_capital': capital_loss_ratio,
+                'tasa_aprobacion_mensual': monthly_approved_ratio,
+                'estabilidad_limite_media': average_limit_stability,
+                'verdaderos_rechazos': FP,
+                'falsos_rechazos': FN
+            }
+
+        return results
+
+        
     def compare(self, logistic_df: pd.DataFrame, dynamic_df: pd.DataFrame) -> dict:
         assert 'prob_default' in logistic_df.columns
         assert 'score_dinamico' in dynamic_df.columns
@@ -53,9 +99,11 @@ class MetricsCalculator:
         }
         psi_series: dict[int, float] = self.calculate_psi_series(scores_by_month)
 
+        business_metrics = self.calculate_business_metrics(logistic_df, dynamic_df)
+
         comparison: dict = {
-            'logistico': {**log_metrics, 'perdida_total': log_loss},
-            'dinamico': {**dyn_metrics, 'perdida_total': dyn_loss},
+            'logistico': {**log_metrics, 'perdida_total': log_loss, 'metricas_negocio': business_metrics['logistico']},
+            'dinamico': {**dyn_metrics, 'perdida_total': dyn_loss, 'metricas_negocio': business_metrics['dinamico']},
             'reduccion_perdida': reduction,
             'psi_mensual': {str(k): v for k, v in psi_series.items()}
         }
