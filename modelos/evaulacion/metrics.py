@@ -64,10 +64,10 @@ class MetricsCalculator:
 
             results[model_key] = {
                 'tasa_mora_mensual': monthly_tasa_mora,
-                'capital_comprometido_total': total_committed_capital,
-                'ratio_perdida_capital': capital_loss_ratio,
+                'capital_comprometido_total': round(total_committed_capital, 4),
+                'ratio_perdida_capital': round(capital_loss_ratio, 4),
                 'tasa_aprobacion_mensual': monthly_approved_ratio,
-                'estabilidad_limite_media': average_limit_stability,
+                'estabilidad_limite_media': round(average_limit_stability, 2),
                 'verdaderos_rechazos': FP,
                 'falsos_rechazos': FN
             }
