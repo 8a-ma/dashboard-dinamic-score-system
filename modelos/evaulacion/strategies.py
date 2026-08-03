@@ -126,7 +126,7 @@ class DynamicSimulationStrategy(ISimulationStrategy):
 
                 x_hat, P = kalman.step(u_t, y_t)
                 approved_limit: float = decide_credit_limit(self._K, x_hat, self._credit_limit_max_norm, self._scale_params)
-                score: float = dynamic_score(x_hat, P, self._K, self._credit_limit_max_norm)
+                score: float = dynamic_score(x_hat, P, self._K, self._credit_limit_max_norm, self._scale_params)
                 loss: float = calculate_month_loss(
                     row['outstanding_debt'],
                     approved_limit,
